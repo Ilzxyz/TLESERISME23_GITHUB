@@ -19,19 +19,27 @@
   <div class="kotak">
     <h4>◆ Cara memasang basis data</h4>
     <ol>
-      <li>Salin berkas <code>tleserisme.db</code> dari komputer ke HP,
+      <li>Salin <code>tleserisme.db</code> dari komputer ke HP,
           taruh di folder <code>Download</code></li>
-      <li>Buka <b>Pengaturan HP → Aplikasi → TLeserisme23 → Izin</b>,
-          nyalakan <b>“Akses semua file”</b></li>
       <li>Pastikan sisa memori HP masih <b>±2 GB</b></li>
-      <li>Tekan tombol di bawah, lalu tunggu sampai selesai —
-          sekali saja, seterusnya langsung jalan</li>
+      <li>Tekan <b>Pasang sekarang</b></li>
+      <li>Kalau berkasnya tidak ketemu sendiri, tekan
+          <b>Cari sendiri berkasnya</b> lalu pilih
+          <code>tleserisme.db</code> dari jendela yang muncul</li>
     </ol>
+    <p style="font-size:11px;opacity:.7;margin:8px 0 0">
+      Cukup sekali. Sesudah ini aplikasi langsung jalan tanpa internet.</p>
   </div>
 
-  <button class="tombol" id="btn-pasang">Pilih berkas tleserisme.db</button>
+  <button class="tombol" id="btn-pasang">Pasang sekarang</button>
+  <div style="height:9px"></div>
+  <button class="tombol lembut" id="btn-cari-sendiri" style="display:none">
+    Cari sendiri berkasnya…</button>
+  <div style="height:9px"></div>
+  <button class="tombol lembut" id="btn-periksa">Periksa lokasi berkas</button>
   <div style="height:9px"></div>
   <button class="tombol lembut" id="btn-ulang">Sudah dipasang — coba buka lagi</button>
+  <input type="file" id="berkas-pilih" style="display:none">
   <div class="pesan" id="pasang-pesan"></div>
 </div>
 

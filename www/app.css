@@ -229,8 +229,9 @@ body.terang .alat .a.on{background:#FBF1DC}
 
 /* ---------------- layar pemasangan ---------------- */
 #pasang{position:fixed;inset:0;background:var(--deep);z-index:90;
-  display:none;flex-direction:column;align-items:center;justify-content:center;
-  padding:34px 26px;text-align:center;overflow-y:auto}
+  display:none;flex-direction:column;align-items:center;justify-content:flex-start;
+  padding:34px 26px 60px;text-align:center;overflow-y:auto}
+#pasang img{flex:none}
 #pasang.on{display:flex}
 #pasang img{width:96px;margin-bottom:20px}
 #pasang h1{margin:0 0 6px;font-size:25px;letter-spacing:-.5px;color:var(--gold2)}

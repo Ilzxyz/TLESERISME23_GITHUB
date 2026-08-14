@@ -83,87 +83,187 @@ function tampilPasang(pesan) {
 /* ============================================================
    PEMASANGAN BASIS DATA (Android)
    ============================================================ */
-async function pilihDanPasang() {
-  const p = $('#pasang-pesan');
-  const lapor = (t, warna) => { p.style.color = warna || 'var(--ink2)'; p.innerHTML = t; };
-  lapor('Mencari berkas…');
-  try {
-    const { Filesystem, Directory } = window.CapacitorFilesystem;
+const NAMA_BERKAS = 'tleserisme.db';
 
-    // 0. minta izin baca penyimpanan (kalau HP-nya masih minta)
+/* tempat-tempat yang dicoba, urut dari yang paling tidak butuh izin */
+const TEMPAT = [
+  { dir: 'EXTERNAL', sub: '', ket: 'folder aplikasi (Android/data)' },
+  { dir: 'EXTERNAL_STORAGE', sub: 'Download', ket: 'Download' },
+  { dir: 'EXTERNAL_STORAGE', sub: 'Downloads', ket: 'Downloads' },
+  { dir: 'DOCUMENTS', sub: '', ket: 'Documents' },
+  { dir: 'EXTERNAL_STORAGE', sub: 'Documents', ket: 'Documents (memori utama)' },
+  { dir: 'EXTERNAL_STORAGE', sub: '', ket: 'memori utama' }
+];
+
+function laporPasang(t, warna) {
+  const p = $('#pasang-pesan');
+  p.style.color = warna || 'var(--ink2)';
+  p.innerHTML = t;
+}
+
+function rapiUkuran(b) {
+  if (!b && b !== 0) return '?';
+  if (b > 1073741824) return (b / 1073741824).toFixed(2) + ' GB';
+  if (b > 1048576) return (b / 1048576).toFixed(0) + ' MB';
+  return b + ' B';
+}
+
+/** telusuri semua tempat; kembalikan {sumber, jejak, adaYangKebuka} */
+async function telusuriBerkas() {
+  const Filesystem = DB.FS();
+  const jejak = [];
+  let sumber = null, adaYangKebuka = false;
+  for (const t of TEMPAT) {
+    try {
+      const r = await Filesystem.readdir({ path: t.sub, directory: t.dir });
+      adaYangKebuka = true;
+      const isi = r.files || [];
+      const ada = isi.find(f => (f.name || f) === NAMA_BERKAS);
+      if (ada) {
+        if (!sumber) sumber = t;
+        jejak.push('✓ ' + t.ket + ' — KETEMU (' + rapiUkuran(ada.size) + ')');
+      } else {
+        const mirip = isi.map(f => f.name || f)
+          .filter(n => /tleserisme/i.test(n) || /\.db$/i.test(n));
+        jejak.push('· ' + t.ket + ' — tidak ada' +
+          (mirip.length ? ' (tapi ada: ' + mirip.slice(0, 3).join(', ') + ')' : ''));
+      }
+    } catch (e) {
+      jejak.push('✕ ' + t.ket + ' — tidak bisa dibuka');
+    }
+  }
+  return { sumber, jejak, adaYangKebuka };
+}
+
+/** tombol "Periksa lokasi" — cuma melaporkan, tidak mengubah apa pun */
+async function periksaLokasi() {
+  laporPasang('Memeriksa…');
+  try {
+    const C = window.Capacitor;
+    const daftar = (C && C.Plugins) ? Object.keys(C.Plugins).join(', ') : '(kosong)';
+    const { jejak } = await telusuriBerkas();
+    laporPasang('<b>Hasil pemeriksaan</b><br><span style="font-size:11px;line-height:2">' +
+      jejak.join('<br>') + '<br><br>Colokan: ' + daftar + '</span>');
+  } catch (e) {
+    laporPasang('Gagal memeriksa: ' + (e.message || e), 'var(--bahaya)');
+  }
+}
+
+/** salin dari folder (cepat, hitungan detik) */
+async function salinDariFolder(sumber) {
+  const Filesystem = DB.FS();
+  const asal = (sumber.sub ? sumber.sub + '/' : '') + NAMA_BERKAS;
+  laporPasang('Ketemu di <b>' + sumber.ket + '</b>.<br>' +
+    'Menyalin… bisa beberapa menit, <b>jangan ditutup</b>.');
+  try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
+  await Filesystem.copy({
+    from: asal, directory: sumber.dir,
+    to: NAMA_BERKAS, toDirectory: 'DATA'
+  });
+}
+
+/** salin dari berkas yang dipilih sendiri lewat jendela pemilih HP
+ *  (tidak butuh izin apa pun, tapi lebih lambat) */
+function bacaB64(irisan) {
+  return new Promise((ok, gagal) => {
+    const fr = new FileReader();
+    fr.onerror = () => gagal(new Error('gagal membaca potongan berkas'));
+    fr.onload = () => {
+      const s = String(fr.result);
+      ok(s.slice(s.indexOf(',') + 1));
+    };
+    fr.readAsDataURL(irisan);
+  });
+}
+
+async function salinDariPilihan(berkas) {
+  const Filesystem = DB.FS();
+  if (!/\.db$/i.test(berkas.name)) {
+    throw new Error('yang dipilih bukan berkas .db (' + berkas.name + ')');
+  }
+  try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
+  const POTONG = 3145728;               // 3 MB, kelipatan 3 supaya base64-nya rapi
+  const total = berkas.size;
+  let sudah = 0, pertama = true, t0 = Date.now();
+  while (sudah < total) {
+    const irisan = berkas.slice(sudah, Math.min(sudah + POTONG, total));
+    const b64 = await bacaB64(irisan);
+    if (pertama) {
+      await Filesystem.writeFile({ path: NAMA_BERKAS, directory: 'DATA', data: b64 });
+      pertama = false;
+    } else {
+      await Filesystem.appendFile({ path: NAMA_BERKAS, directory: 'DATA', data: b64 });
+    }
+    sudah += irisan.size;
+    const persen = (sudah / total) * 100;
+    const detik = (Date.now() - t0) / 1000;
+    const sisa = detik > 2 ? Math.round((total - sudah) / (sudah / detik) / 60) : null;
+    laporPasang('Menyalin <b>' + persen.toFixed(1) + '%</b> (' +
+      rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ')' +
+      (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
+      '<br><b>Jangan tutup aplikasi, jangan kunci layar.</b>');
+    await new Promise(r => setTimeout(r, 0));
+  }
+}
+
+/** langkah terakhir: pindahkan ke tempat mesin basis data, lalu buka */
+async function pasangkanDanBuka() {
+  laporPasang('Memasang…');
+  await DB.pasangDariBerkas(NAMA_BERKAS);
+  laporPasang('Membuka perpustakaan…');
+  await DB.bukaAndroid();
+  await lanjutJalan();
+}
+
+function tanganiGagalPasang(e) {
+  const m = (e && (e.message || e.errorMessage)) || String(e);
+  let saran = '';
+  if (/space|ENOSPC|penuh|full/i.test(m)) {
+    saran = '<br><br>Sepertinya <b>memori HP penuh</b>. Perlu ruang kosong ±2 GB.';
+  }
+  laporPasang('Gagal: ' + m + saran, 'var(--bahaya)');
+}
+
+/** tombol utama */
+async function pilihDanPasang() {
+  laporPasang('Mencari berkas…');
+  try {
+    const Filesystem = DB.FS();
     try {
       const iz = await Filesystem.checkPermissions();
       if (iz && iz.publicStorage !== 'granted') await Filesystem.requestPermissions();
     } catch (e) { }
 
-    // 1. cari tleserisme.db di beberapa tempat yang lazim
-    const calon = [
-      { dir: Directory.External, sub: '', ket: 'folder aplikasi' },
-      { dir: Directory.ExternalStorage, sub: 'Download', ket: 'Download' },
-      { dir: Directory.ExternalStorage, sub: 'Documents', ket: 'Documents' },
-      { dir: Directory.Documents, sub: '', ket: 'Documents' },
-      { dir: Directory.ExternalStorage, sub: '', ket: 'memori utama' }
-    ];
-    let sumber = null;
-    let adaYangKebuka = false;
-    const jejak = [];
-    for (const c of calon) {
-      try {
-        const r = await Filesystem.readdir({ path: c.sub, directory: c.dir });
-        adaYangKebuka = true;
-        const ada = (r.files || []).find(f => (f.name || f) === 'tleserisme.db');
-        if (ada) { sumber = c; break; }
-        jejak.push(c.ket + ': tidak ada');
-      } catch (e) {
-        jejak.push(c.ket + ': tidak bisa dibuka');
-      }
-    }
+    const { sumber, jejak, adaYangKebuka } = await telusuriBerkas();
 
     if (!sumber) {
-      if (!adaYangKebuka) {
-        lapor('Aplikasi <b>belum diizinkan membaca penyimpanan</b>.<br><br>' +
-          'Buka <b>Pengaturan HP → Aplikasi → TLeserisme23 → Izin</b>, ' +
-          'lalu nyalakan <b>“Akses semua file”</b> ' +
-          '(kadang tertulis “Kelola semua file”).<br><br>' +
-          'Sesudah itu kembali ke sini dan tekan tombolnya lagi.', 'var(--bahaya)');
-      } else {
-        lapor('Berkas <b>tleserisme.db</b> tidak ketemu.<br><br>' +
-          'Pastikan sudah disalin ke folder <b>Download</b> di HP, ' +
-          'dan namanya persis <b>tleserisme.db</b> (huruf kecil semua, ' +
-          'tanpa tambahan angka atau “(1)”).<br><br>' +
-          '<span style="font-size:11px;opacity:.7">Sudah dicek — ' +
-          jejak.join(' · ') + '</span>', 'var(--bahaya)');
-      }
+      laporPasang('Berkas <b>tleserisme.db</b> belum bisa dijangkau otomatis.<br><br>' +
+        'Tekan tombol <b>“Cari sendiri berkasnya”</b> di bawah — ' +
+        'nanti muncul jendela pemilih berkas bawaan HP, ' +
+        'pilih <b>tleserisme.db</b> dari folder Download.<br><br>' +
+        '<span style="font-size:11px;line-height:2;opacity:.75">' +
+        jejak.join('<br>') + '</span>',
+        adaYangKebuka ? 'var(--ink2)' : 'var(--bahaya)');
+      $('#btn-cari-sendiri').style.display = 'block';
       return;
     }
 
-    // 2. salin ke folder data aplikasi
-    const asal = (sumber.sub ? sumber.sub + '/' : '') + 'tleserisme.db';
-    lapor('Ketemu di <b>' + sumber.ket + '</b>.<br>' +
-      'Menyalin basis data… bisa beberapa menit, <b>jangan ditutup</b>.');
-    try { await Filesystem.deleteFile({ path: 'tleserisme.db', directory: Directory.Data }); }
-    catch (e) { }
-    await Filesystem.copy({
-      from: asal, directory: sumber.dir,
-      to: 'tleserisme.db', toDirectory: Directory.Data
-    });
-
-    // 3. pindahkan ke tempat yang bisa dibaca plugin
-    lapor('Memasang…');
-    await DB.pasangDariBerkas('tleserisme.db');
-
-    // 4. buka
-    lapor('Membuka perpustakaan…');
-    await DB.bukaAndroid();
-    await lanjutJalan();
+    await salinDariFolder(sumber);
+    await pasangkanDanBuka();
   } catch (e) {
-    const m = (e && (e.message || e.errorMessage)) || String(e);
-    let saran = '';
-    if (/space|ENOSPC|penuh/i.test(m)) {
-      saran = '<br><br>Sepertinya <b>memori HP penuh</b>. ' +
-        'Perlu ruang kosong sekitar 2 GB. Kosongkan dulu, lalu ulangi.';
-    }
-    lapor('Gagal: ' + m + saran, 'var(--bahaya)');
+    tanganiGagalPasang(e);
+    $('#btn-cari-sendiri').style.display = 'block';
+  }
+}
+
+/** dipanggil sesudah pengguna memilih berkas sendiri */
+async function pakaiBerkasPilihan(berkas) {
+  try {
+    laporPasang('Menyiapkan…');
+    await salinDariPilihan(berkas);
+    await pasangkanDanBuka();
+  } catch (e) {
+    tanganiGagalPasang(e);
   }
 }
 
@@ -598,6 +698,12 @@ function tutupTirai() { $('#tirai').classList.remove('on'); }
 function pasangKendali() {
   $('#btn-pasang').onclick = pilihDanPasang;
   $('#btn-ulang').onclick = () => location.reload();
+  $('#btn-periksa').onclick = periksaLokasi;
+  $('#btn-cari-sendiri').onclick = () => $('#berkas-pilih').click();
+  $('#berkas-pilih').onchange = function () {
+    const f = this.files && this.files[0];
+    if (f) pakaiBerkasPilihan(f);
+  };
 
   $$('.nv').forEach(b => b.onclick = () => pergi(b.dataset.pergi));
   $('#ke-cari').onclick = () => pergi('cari');

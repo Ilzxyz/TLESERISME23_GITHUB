@@ -65,6 +65,30 @@ const DB = (() => {
       && window.Capacitor.isNativePlatform());
   }
 
+  /* ---------- jalan masuk ke Android ----------
+     Capacitor menaruh semua colokan di window.Capacitor.Plugins.
+     (window.CapacitorFilesystem / window.CapacitorSQLitePlugin TIDAK pernah ada
+      kecuali kodenya dibundel pakai npm — punya kita tidak.) */
+  function colokan() {
+    const C = window.Capacitor;
+    if (!C || !C.Plugins) throw new Error('Jembatan Capacitor tidak ditemukan');
+    return C.Plugins;
+  }
+  function FS() {
+    const f = colokan().Filesystem;
+    if (!f) throw new Error('Colokan Filesystem tidak ada di aplikasi ini');
+    return f;
+  }
+  function SQ() {
+    const s = colokan().CapacitorSQLite;
+    if (!s) throw new Error('Colokan CapacitorSQLite tidak ada di aplikasi ini');
+    return s;
+  }
+  const MAP = {
+    Data: 'DATA', Cache: 'CACHE', Documents: 'DOCUMENTS',
+    External: 'EXTERNAL', ExternalStorage: 'EXTERNAL_STORAGE', Library: 'LIBRARY'
+  };
+
   /* ---------- pembuka ---------- */
 
   const CDN = 'https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/';
@@ -108,16 +132,17 @@ const DB = (() => {
   }
 
   async function bukaAndroid() {
-    const { CapacitorSQLite, SQLiteConnection } = window.CapacitorSQLitePlugin;
-    const sq = new SQLiteConnection(CapacitorSQLite);
-    const ada = await sq.isDatabase(NAMA_DB);
-    if (!ada.result) throw new Error('BELUM_ADA_DB');
-    const ret = await sq.checkConnectionsConsistency();
-    const punya = (await sq.isConnection(NAMA_DB, false)).result;
-    cap = (ret.result && punya)
-      ? await sq.retrieveConnection(NAMA_DB, false)
-      : await sq.createConnection(NAMA_DB, false, 'no-encryption', 1, false);
-    await cap.open();
+    const s = SQ();
+    const ada = await s.isDatabase({ database: NAMA_DB });
+    if (!ada || !ada.result) throw new Error('BELUM_ADA_DB');
+    try {
+      await s.createConnection({
+        database: NAMA_DB, version: 1, encrypted: false,
+        mode: 'no-encryption', readonly: false
+      });
+    } catch (e) { /* sudah pernah dibuat, tidak apa-apa */ }
+    await s.open({ database: NAMA_DB, readonly: false });
+    cap = s;
     mode = 'android';
     siap = true;
   }
@@ -126,14 +151,15 @@ const DB = (() => {
    *  Directory.Data di Android = .../files  -> folder 'files' bagi plugin.
    *  ('default' menunjuk ke .../databases, bukan ke situ) */
   async function pasangDariBerkas(namaBerkas) {
-    const { CapacitorSQLite, SQLiteConnection } = window.CapacitorSQLitePlugin;
-    const sq = new SQLiteConnection(CapacitorSQLite);
+    const s = SQ();
     let galat = null;
     for (const folder of ['files', 'default']) {
       try {
-        await sq.moveDatabasesAndAddSuffix(folder, [namaBerkas]);
-        const ada = await sq.isDatabase(NAMA_DB);
-        if (ada.result) return;
+        await s.moveDatabasesAndAddSuffix({
+          folderPath: folder, dbNameList: [namaBerkas]
+        });
+        const ada = await s.isDatabase({ database: NAMA_DB });
+        if (ada && ada.result) return;
         galat = new Error('berkas tidak sampai ke tempatnya');
       } catch (e) {
         galat = e;
@@ -154,8 +180,10 @@ const DB = (() => {
       st.free();
       return out;
     }
-    const r = await cap.query(sql, param);
-    return r.values || [];
+    const r = await SQ().query({
+      database: NAMA_DB, statement: sql, values: param, readonly: false
+    });
+    return (r && r.values) || [];
   }
 
   async function jalankan(sql, param = []) {
@@ -163,7 +191,10 @@ const DB = (() => {
       sqljs.run(sql, param);
       return;
     }
-    await cap.run(sql, param, false);
+    await SQ().run({
+      database: NAMA_DB, statement: sql, values: param,
+      transaction: false, readonly: false
+    });
   }
 
   async function satu(sql, param = []) {
@@ -435,6 +466,7 @@ const DB = (() => {
 
   return {
     seragam, kataKunci, bukaTeks, diAndroid,
+    FS, SQ, MAP,
     bukaPeramban, bukaAndroid, pasangDariBerkas, siapkanTabelPengguna,
     get mode() { return mode; },
     get siap() { return siap; },
