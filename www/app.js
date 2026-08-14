@@ -85,54 +85,85 @@ function tampilPasang(pesan) {
    ============================================================ */
 async function pilihDanPasang() {
   const p = $('#pasang-pesan');
-  p.style.color = 'var(--ink2)';
-  p.textContent = 'Mencari berkas…';
+  const lapor = (t, warna) => { p.style.color = warna || 'var(--ink2)'; p.innerHTML = t; };
+  lapor('Mencari berkas…');
   try {
     const { Filesystem, Directory } = window.CapacitorFilesystem;
+
+    // 0. minta izin baca penyimpanan (kalau HP-nya masih minta)
+    try {
+      const iz = await Filesystem.checkPermissions();
+      if (iz && iz.publicStorage !== 'granted') await Filesystem.requestPermissions();
+    } catch (e) { }
+
     // 1. cari tleserisme.db di beberapa tempat yang lazim
     const calon = [
-      { dir: Directory.Documents, sub: '' },
-      { dir: Directory.External, sub: '' },
-      { dir: Directory.ExternalStorage, sub: 'Download' },
-      { dir: Directory.ExternalStorage, sub: 'Documents' },
-      { dir: Directory.ExternalStorage, sub: '' }
+      { dir: Directory.External, sub: '', ket: 'folder aplikasi' },
+      { dir: Directory.ExternalStorage, sub: 'Download', ket: 'Download' },
+      { dir: Directory.ExternalStorage, sub: 'Documents', ket: 'Documents' },
+      { dir: Directory.Documents, sub: '', ket: 'Documents' },
+      { dir: Directory.ExternalStorage, sub: '', ket: 'memori utama' }
     ];
     let sumber = null;
+    let adaYangKebuka = false;
+    const jejak = [];
     for (const c of calon) {
       try {
         const r = await Filesystem.readdir({ path: c.sub, directory: c.dir });
-        const ada = (r.files || []).find(f =>
-          (f.name || f) === 'tleserisme.db');
+        adaYangKebuka = true;
+        const ada = (r.files || []).find(f => (f.name || f) === 'tleserisme.db');
         if (ada) { sumber = c; break; }
-      } catch (e) { }
+        jejak.push(c.ket + ': tidak ada');
+      } catch (e) {
+        jejak.push(c.ket + ': tidak bisa dibuka');
+      }
     }
+
     if (!sumber) {
-      p.style.color = 'var(--bahaya)';
-      p.innerHTML = 'Berkas <b>tleserisme.db</b> tidak ketemu.<br>' +
-        'Pastikan sudah disalin ke folder <b>Download</b> di HP, ' +
-        'dan namanya persis <b>tleserisme.db</b> (huruf kecil semua).';
+      if (!adaYangKebuka) {
+        lapor('Aplikasi <b>belum diizinkan membaca penyimpanan</b>.<br><br>' +
+          'Buka <b>Pengaturan HP → Aplikasi → TLeserisme23 → Izin</b>, ' +
+          'lalu nyalakan <b>“Akses semua file”</b> ' +
+          '(kadang tertulis “Kelola semua file”).<br><br>' +
+          'Sesudah itu kembali ke sini dan tekan tombolnya lagi.', 'var(--bahaya)');
+      } else {
+        lapor('Berkas <b>tleserisme.db</b> tidak ketemu.<br><br>' +
+          'Pastikan sudah disalin ke folder <b>Download</b> di HP, ' +
+          'dan namanya persis <b>tleserisme.db</b> (huruf kecil semua, ' +
+          'tanpa tambahan angka atau “(1)”).<br><br>' +
+          '<span style="font-size:11px;opacity:.7">Sudah dicek — ' +
+          jejak.join(' · ') + '</span>', 'var(--bahaya)');
+      }
       return;
     }
 
     // 2. salin ke folder data aplikasi
-    p.style.color = 'var(--ink2)';
-    p.textContent = 'Menyalin basis data… ini beberapa menit, jangan ditutup.';
     const asal = (sumber.sub ? sumber.sub + '/' : '') + 'tleserisme.db';
+    lapor('Ketemu di <b>' + sumber.ket + '</b>.<br>' +
+      'Menyalin basis data… bisa beberapa menit, <b>jangan ditutup</b>.');
+    try { await Filesystem.deleteFile({ path: 'tleserisme.db', directory: Directory.Data }); }
+    catch (e) { }
     await Filesystem.copy({
       from: asal, directory: sumber.dir,
       to: 'tleserisme.db', toDirectory: Directory.Data
     });
 
     // 3. pindahkan ke tempat yang bisa dibaca plugin
-    p.textContent = 'Memasang…';
+    lapor('Memasang…');
     await DB.pasangDariBerkas('tleserisme.db');
 
     // 4. buka
+    lapor('Membuka perpustakaan…');
     await DB.bukaAndroid();
     await lanjutJalan();
   } catch (e) {
-    p.style.color = 'var(--bahaya)';
-    p.textContent = 'Gagal: ' + (e.message || e);
+    const m = (e && (e.message || e.errorMessage)) || String(e);
+    let saran = '';
+    if (/space|ENOSPC|penuh/i.test(m)) {
+      saran = '<br><br>Sepertinya <b>memori HP penuh</b>. ' +
+        'Perlu ruang kosong sekitar 2 GB. Kosongkan dulu, lalu ulangi.';
+    }
+    lapor('Gagal: ' + m + saran, 'var(--bahaya)');
   }
 }
 

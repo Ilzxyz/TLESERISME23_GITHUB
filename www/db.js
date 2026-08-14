@@ -122,11 +122,24 @@ const DB = (() => {
     siap = true;
   }
 
-  /** pindahkan tleserisme.db dari folder data aplikasi ke tempat plugin */
+  /** pindahkan tleserisme.db dari folder data aplikasi ke tempat plugin
+   *  Directory.Data di Android = .../files  -> folder 'files' bagi plugin.
+   *  ('default' menunjuk ke .../databases, bukan ke situ) */
   async function pasangDariBerkas(namaBerkas) {
     const { CapacitorSQLite, SQLiteConnection } = window.CapacitorSQLitePlugin;
     const sq = new SQLiteConnection(CapacitorSQLite);
-    await sq.moveDatabasesAndAddSuffix('default', [namaBerkas]);
+    let galat = null;
+    for (const folder of ['files', 'default']) {
+      try {
+        await sq.moveDatabasesAndAddSuffix(folder, [namaBerkas]);
+        const ada = await sq.isDatabase(NAMA_DB);
+        if (ada.result) return;
+        galat = new Error('berkas tidak sampai ke tempatnya');
+      } catch (e) {
+        galat = e;
+      }
+    }
+    throw galat || new Error('gagal memasang');
   }
 
   /* ---------- penanya ---------- */
