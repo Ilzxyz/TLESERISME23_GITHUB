@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1,user-scalable=no">
+<meta name="color-scheme" content="dark light">
+<title>TLeserisme23</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- =============== LAYAR PEMASANGAN (muncul kalau data belum ada) =============== -->
+<div id="pasang">
+  <img src="ikon/logo.png" alt="">
+  <h1>TLeserisme23</h1>
+  <p id="pasang-teks">Perpustakaan Digital Fikih &amp; Bahtsul Masail<br>
+     Basis data belum terpasang di perangkat ini.</p>
+
+  <div class="kotak">
+    <h4>◆ Cara memasang basis data</h4>
+    <ol>
+      <li>Salin berkas <code>tleserisme.db</code> dari komputer ke HP</li>
+      <li>Taruh di folder <code>Download</code></li>
+      <li>Tekan tombol di bawah, lalu pilih berkas itu</li>
+      <li>Tunggu sampai selesai — sekali saja, seterusnya langsung jalan</li>
+    </ol>
+  </div>
+
+  <button class="tombol" id="btn-pasang">Pilih berkas tleserisme.db</button>
+  <div style="height:9px"></div>
+  <button class="tombol lembut" id="btn-ulang">Sudah dipasang — coba buka lagi</button>
+  <div class="pesan" id="pasang-pesan"></div>
+</div>
+
+<!-- =============== APLIKASI =============== -->
+<div id="aplikasi" style="display:none">
+
+  <div id="bilah">
+    <img class="mark" src="ikon/logo.png" alt="">
+    <div class="jd">
+      <div class="t" id="bilah-t">TLeserisme23</div>
+      <div class="s" id="bilah-s">Perpustakaan Fikih &amp; Bahtsul Masail</div>
+    </div>
+    <button class="tbl" id="btn-tema" title="Terang / gelap">◐</button>
+  </div>
+
+  <div id="isi">
+
+    <!-- ---------------- BERANDA ---------------- -->
+    <div class="layar on" data-layar="beranda">
+      <div class="hero">
+        <div class="hi">Ahlan wa sahlan</div>
+        <div class="big">Cari satu kata,<br>ketemu satu paragraf.</div>
+        <div class="sm">Bukan cuma nama kitabnya — langsung ke ibarat yang kamu cari,
+          lengkap dengan juz dan halaman cetaknya.</div>
+      </div>
+
+      <button class="cari-kotak" id="ke-cari" style="cursor:pointer;text-align:left">
+        <span style="color:var(--ink3)">⌕</span>
+        <span style="flex:1;color:var(--ink3);font-size:14px">Cari ibarat, masalah, atau kitab…</span>
+      </button>
+
+      <div class="kpi2" id="kpi"></div>
+
+      <div class="judul-bag"><h3>Jalan pintas</h3></div>
+      <button class="baris" data-pergi="cari">
+        <span class="lencana l-fikih">CARI</span>
+        <span class="n"><span class="t">Pencarian ibarat</span>
+          <span class="m">Abaikan harakat &middot; frasa persis &middot; per paragraf</span></span>
+        <span style="color:var(--ink3)">›</span>
+      </button>
+      <button class="baris" data-pergi="jelajah">
+        <span class="lencana l-bahtsul">FAN</span>
+        <span class="n"><span class="t">Jelajah per fan</span>
+          <span class="m" id="ket-fan">Pohon fan ilmu dan kitabnya</span></span>
+        <span style="color:var(--ink3)">›</span>
+      </button>
+      <button class="baris" data-pergi="koleksi">
+        <span class="lencana l-catatan">TULIS</span>
+        <span class="n"><span class="t">Catatan pribadi</span>
+          <span class="m">Tulisanmu sendiri, ikut tercari</span></span>
+        <span style="color:var(--ink3)">›</span>
+      </button>
+
+      <div class="judul-bag"><h3>Terakhir dibaca</h3></div>
+      <div id="riwayat"></div>
+    </div>
+
+    <!-- ---------------- CARI ---------------- -->
+    <div class="layar" data-layar="cari">
+      <div class="cari-kotak">
+        <span style="color:var(--gold)">⌕</span>
+        <input id="q" placeholder="Ketik kata kunci…" autocomplete="off"
+               autocorrect="off" autocapitalize="off" spellcheck="false">
+        <span id="q-hapus" style="color:var(--ink3);display:none;padding:0 4px">✕</span>
+      </div>
+      <div class="chips" id="saring-jenis">
+        <button class="chip on" data-j="semua">Semua</button>
+        <button class="chip" data-j="teks">Isi kitab</button>
+        <button class="chip" data-j="judul">Judul kitab</button>
+        <button class="chip" data-j="catatan">Catatan saya</button>
+      </div>
+      <div class="chips">
+        <button class="chip on" id="tg-harakat">✓ Abaikan harakat</button>
+        <button class="chip" id="tg-frasa">Frasa persis</button>
+      </div>
+      <div id="hasil"></div>
+    </div>
+
+    <!-- ---------------- JELAJAH ---------------- -->
+    <div class="layar" data-layar="jelajah">
+      <div class="cari-kotak">
+        <span style="color:var(--ink3)">⌕</span>
+        <input id="q-fan" placeholder="Cari nama fan atau kitab…" autocomplete="off">
+      </div>
+      <div id="pohon"></div>
+    </div>
+
+    <!-- ---------------- BACA ---------------- -->
+    <div class="layar" data-layar="baca">
+      <div id="baca-kepala">
+        <div class="jd" id="baca-judul">—</div>
+        <div class="pg" id="baca-pengarang"></div>
+        <div class="mt" id="baca-meta"></div>
+      </div>
+      <div class="alat">
+        <button class="a" id="a-isi"><div class="ic">☰</div><div class="lb">Daftar isi</div></button>
+        <button class="a on" id="a-harakat"><div class="ic">ً</div><div class="lb">Harakat</div></button>
+        <button class="a" id="a-salin"><div class="ic">⧉</div><div class="lb">Salin</div></button>
+        <button class="a" id="a-catat"><div class="ic">✎</div><div class="lb">Catat</div></button>
+        <button class="a" id="a-tanda"><div class="ic">★</div><div class="lb">Tandai</div></button>
+      </div>
+      <div id="nass"></div>
+      <div class="pager">
+        <button id="p-mundur">‹</button>
+        <div class="bar"><i id="p-bar" style="width:0"></i></div>
+        <span class="lb" id="p-pos">—</span>
+        <button id="p-maju">›</button>
+      </div>
+    </div>
+
+    <!-- ---------------- KOLEKSI ---------------- -->
+    <div class="layar" data-layar="koleksi">
+      <div class="hero">
+        <div class="hi">Ruh aplikasi ini</div>
+        <div class="big" style="font-size:19px">Perpustakaan yang<br>ikut tumbuh sama kamu.</div>
+        <div class="sm">Syamilah cuma bisa dibaca. Di sini kamu bisa menulis rumusan
+          dan catatan sendiri — lalu ikut tercari bareng kitab kuning.</div>
+      </div>
+      <button class="tombol" id="btn-catatan-baru" style="margin-bottom:14px">+ Tulis catatan baru</button>
+      <div class="judul-bag"><h3>Catatan saya</h3><span class="nilai" id="jml-catatan"></span></div>
+      <div id="daftar-catatan"></div>
+      <div class="judul-bag"><h3>Halaman bertanda</h3></div>
+      <div id="daftar-tanda"></div>
+    </div>
+
+    <!-- ---------------- ATUR ---------------- -->
+    <div class="layar" data-layar="atur">
+      <div class="judul-bag" style="margin-top:2px"><h3>Tampilan teks Arab</h3></div>
+      <div class="grup">
+        <div class="set" id="s-harakat">
+          <div class="n"><div class="t">Tampilkan harakat</div>
+            <div class="s">Matikan biar mata lebih enak saat membaca cepat</div></div>
+          <div class="sw on"></div>
+        </div>
+        <div class="set" id="s-besar">
+          <div class="n"><div class="t">Ukuran huruf Arab</div>
+            <div class="s">Ketuk untuk memperbesar, sampai maksimal lalu balik lagi</div></div>
+          <span class="nilai" id="v-besar">18 pt</span>
+        </div>
+        <div class="set" id="s-tema">
+          <div class="n"><div class="t">Mode terang</div>
+            <div class="s">Bawaan gelap, enak dipakai malam</div></div>
+          <div class="sw"></div>
+        </div>
+      </div>
+
+      <div class="judul-bag"><h3>Pencarian</h3></div>
+      <div class="grup">
+        <div class="set" id="s-abaikan">
+          <div class="n"><div class="t">Abaikan harakat</div>
+            <div class="s">كِتَاب dianggap sama dengan كتاب</div></div>
+          <div class="sw on"></div>
+        </div>
+        <div class="set" id="s-hamzah">
+          <div class="n"><div class="t">Samakan bentuk hamzah</div>
+            <div class="s">أ إ آ ٱ semua dianggap ا &middot; ة jadi ه &middot; ى jadi ي</div></div>
+          <div class="sw on"></div>
+        </div>
+      </div>
+
+      <div class="judul-bag"><h3>Basis data</h3></div>
+      <div class="grup" id="info-db"></div>
+
+      <div style="text-align:center;color:var(--ink3);font-size:11px;
+                  margin:20px 0 6px;line-height:1.9">
+        TLeserisme23 &middot; versi 1.0<br>
+        Data dari Maktabah Syamilah &amp; arsip Bahtsul Masail
+      </div>
+    </div>
+
+  </div>
+
+  <div id="nav">
+    <button class="nv on" data-pergi="beranda"><span class="ic">⌂</span><span class="lb">Beranda</span></button>
+    <button class="nv" data-pergi="cari"><span class="ic">⌕</span><span class="lb">Cari</span></button>
+    <button class="nv" data-pergi="jelajah"><span class="ic">▤</span><span class="lb">Jelajah</span></button>
+    <button class="nv" data-pergi="koleksi"><span class="ic">✎</span><span class="lb">Koleksi</span></button>
+    <button class="nv" data-pergi="atur"><span class="ic">⚙</span><span class="lb">Atur</span></button>
+  </div>
+</div>
+
+<!-- =============== TIRAI =============== -->
+<div id="tirai">
+  <div class="panel">
+    <div class="kepala">
+      <h3 id="tirai-judul">—</h3>
+      <button class="tbl" id="tirai-tutup">✕</button>
+    </div>
+    <div class="badan" id="tirai-badan"></div>
+  </div>
+</div>
+
+<script src="vendor/pako_inflate.umd.min.js"></script>
+<script src="db.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
