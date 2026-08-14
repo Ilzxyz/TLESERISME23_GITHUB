@@ -50,7 +50,8 @@ async function ikon() {
 }
 
 async function splash() {
-  for (const [d, px] of [['mdpi',320],['hdpi',480],['xhdpi',720],['xxhdpi',960],['xxxhdpi',1280]]) {
+  const daftar = [['mdpi',320],['hdpi',480],['xhdpi',720],['xxhdpi',960],['xxxhdpi',1280]];
+  for (const [d, px] of daftar) {
     const folder = `${RES}/drawable-${d}`;
     fs.mkdirSync(folder, { recursive: true });
     const t = Math.round(px * 1.8);
@@ -70,21 +71,30 @@ async function splash() {
 }
 
 function warna() {
-  tulis(`${RES}/values/colors.xml`,
+  // Capacitor SUDAH punya values/ic_launcher_background.xml.
+  // Kalau kita bikin warna bernama sama di colors.xml, Gradle menolak
+  // dengan "Duplicate resources". Jadi berkas itu kita TIMPA, bukan tambah.
+  tulis(`${RES}/values/ic_launcher_background.xml`,
 `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#0A1536</color>
+</resources>
+`);
+  tulis(`${RES}/values/colors.xml`,
+`<?xml version="1.0" encoding="utf-8"?>
+<resources>
     <color name="colorPrimary">#0A1536</color>
     <color name="colorPrimaryDark">#070E1A</color>
     <color name="colorAccent">#E9BC6B</color>
 </resources>
 `);
-  const ada = `<?xml version="1.0" encoding="utf-8"?>
+  const ada =
+`<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:mipmap/ic_launcher_foreground"/>
+    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
 </adaptive-icon>
-`.replace('android:mipmap/ic_launcher_foreground"', 'android:drawable="@mipmap/ic_launcher_foreground"');
+`;
   tulis(`${RES}/mipmap-anydpi-v26/ic_launcher.xml`, ada);
   tulis(`${RES}/mipmap-anydpi-v26/ic_launcher_round.xml`, ada);
 }
