@@ -131,6 +131,41 @@ const DB = (() => {
     siap = true;
   }
 
+  /* ---------- mode Chrome: baca berkas dari harddisk ---------- */
+  let pekerja = null, noPesan = 0;
+  const menunggu = new Map();
+
+  function kirimPekerja(jenis, muatan) {
+    return new Promise((ok, gagal) => {
+      const id = ++noPesan;
+      menunggu.set(id, { ok, gagal });
+      pekerja.postMessage({ id, jenis, muatan });
+    });
+  }
+
+  /** buka tleserisme.db yang dipilih pengguna dari komputernya */
+  async function bukaLokal(berkas) {
+    if (!berkas || !berkas.size) throw new Error('berkas kosong / tidak terbaca');
+    if (pekerja) { pekerja.terminate(); pekerja = null; }
+    pekerja = new Worker('pekerja-db.js', { type: 'module' });
+    pekerja.onmessage = (ev) => {
+      const d = ev.data || {};
+      const t = menunggu.get(d.id);
+      if (!t) return;
+      menunggu.delete(d.id);
+      d.ok ? t.ok(d.hasil) : t.gagal(new Error(d.galat));
+    };
+    pekerja.onerror = (e) => {
+      menunggu.forEach(t => t.gagal(new Error('pekerja gagal: ' + (e.message || ''))));
+      menunggu.clear();
+    };
+    const info = await kirimPekerja('buka', { berkas });
+    MILIK.muat();
+    mode = 'lokal';
+    siap = true;
+    return info;
+  }
+
   async function bukaAndroid() {
     const s = SQ();
     const ada = await s.isDatabase({ database: NAMA_DB });
@@ -180,6 +215,9 @@ const DB = (() => {
       st.free();
       return out;
     }
+    if (mode === 'lokal') {
+      return kirimPekerja('tanya', { sql, param });
+    }
     const r = await SQ().query({
       database: NAMA_DB, statement: sql, values: param, readonly: false
     });
@@ -187,6 +225,7 @@ const DB = (() => {
   }
 
   async function jalankan(sql, param = []) {
+    if (mode === 'lokal') return;      // basis data kitab hanya-baca di Chrome
     if (mode === 'peramban') {
       sqljs.run(sql, param);
       return;
@@ -346,17 +385,59 @@ const DB = (() => {
     return hasil;
   }
 
-  async function hitungCari(q, frasa, fanId) {
+  /* ---------- pembatas: cari di satu kitab saja ---------- */
+  const rentangKitab = new Map();
+
+  /** id halaman satu kitab itu berurutan, jadi cukup tahu ujung-ujungnya */
+  async function rentang(kitabId) {
+    if (rentangKitab.has(kitabId)) return rentangKitab.get(kitabId);
+    const r = await satu(
+      'SELECT MIN(id) a, MAX(id) b FROM halaman WHERE kitab_id = ?', [kitabId]);
+    const v = (r && r.a != null) ? { a: r.a, b: r.b } : null;
+    rentangKitab.set(kitabId, v);
+    return v;
+  }
+
+  /** ambil bagian daftar terurut yang nilainya antara a dan b */
+  function potongRentang(id, a, b) {
+    let lo = 0, hi = id.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (id[m] < a) lo = m + 1; else hi = m; }
+    const awal = lo;
+    hi = id.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (id[m] <= b) lo = m + 1; else hi = m; }
+    return id.slice(awal, lo);
+  }
+
+  /** saring daftar id halaman supaya benar-benar cuma dari kitab itu */
+  async function saringKitab(id, kitabId) {
+    if (!id.length) return [];
+    const r = await rentang(kitabId);
+    if (!r) return [];
+    const sempit = potongRentang(id, r.a, r.b);
+    if (!sempit.length) return [];
+    const keluar = [];
+    for (let i = 0; i < sempit.length; i += 900) {
+      const p = sempit.slice(i, i + 900);
+      const rows = await tanya(
+        `SELECT id FROM halaman WHERE id IN (${p.map(() => '?').join(',')})
+         AND kitab_id = ? ORDER BY id`, p.concat([kitabId]));
+      rows.forEach(x => keluar.push(x.id));
+    }
+    return keluar;
+  }
+
+  async function hitungCari(q, frasa, fanId, kitabId) {
     const kata = kataKunci(q);
     if (!kata.length) return 0;
-    const id = await idHalaman(kata);
+    let id = await idHalaman(kata);
+    if (kitabId) id = await saringKitab(id, kitabId);
     if (!fanId) return id.length;
     const rows = await ambilInfoHalaman(id.slice(0, 4000), fanId);
     return rows.length;
   }
 
   /** ambil keterangan halaman berdasarkan daftar id */
-  async function ambilInfoHalaman(id, fanId, batas, lewati) {
+  async function ambilInfoHalaman(id, fanId, batas, lewati, kitabId) {
     if (!id.length) return [];
     const potong = id.slice(0, 900);          // batas aman panjang kueri
     const tanda = potong.map(() => '?').join(',');
@@ -365,9 +446,12 @@ const DB = (() => {
                  FROM halaman h JOIN kitab k ON k.id = h.kitab_id
                  WHERE h.id IN (${tanda})` +
                 (fanId ? ' AND k.fan_id = ?' : '') +
+                (kitabId ? ' AND h.kitab_id = ?' : '') +
                 ' ORDER BY h.kitab_id, h.urut' +
                 (batas ? ' LIMIT ' + (+batas) + ' OFFSET ' + (+(lewati || 0)) : '');
-    const par = fanId ? potong.concat([fanId]) : potong;
+    let par = potong.slice();
+    if (fanId) par.push(fanId);
+    if (kitabId) par.push(kitabId);
     return tanya(sql, par);
   }
 
@@ -376,10 +460,11 @@ const DB = (() => {
     return seragam(teks).indexOf(frasaSeragam) >= 0;
   }
 
-  async function cari(q, { frasa = false, fanId = null, batas = 30 } = {}) {
+  async function cari(q, { frasa = false, fanId = null, kitabId = null, batas = 30 } = {}) {
     const kata = kataKunci(q);
     if (!kata.length) return [];
-    const id = await idHalaman(kata);
+    let id = await idHalaman(kata);
+    if (kitabId) id = await saringKitab(id, kitabId);
     if (!id.length) return [];
     const frasaS = frasa ? kata.join(' ') : null;
     const hasil = [];
@@ -388,7 +473,7 @@ const DB = (() => {
     while (hasil.length < batas && mulai < id.length) {
       const potong = id.slice(mulai, mulai + 600);
       mulai += 600;
-      const rows = await ambilInfoHalaman(potong, fanId);
+      const rows = await ambilInfoHalaman(potong, fanId, null, null, kitabId);
       for (const r of rows) {
         r.isi = bukaTeks(r.teks);
         delete r.teks;
@@ -464,18 +549,144 @@ const DB = (() => {
                   JOIN kitab k ON k.id=r.kitab_id ORDER BY r.waktu DESC LIMIT ?`, [batas]);
   }
 
+  /* ============================================================
+     Di Chrome, berkas kitab hanya-baca. Jadi catatan, penanda,
+     dan riwayat disimpan terpisah di penyimpanan peramban.
+     ============================================================ */
+  const MILIK = {
+    kunci: 'tleserisme23.milik',
+    data: null,
+    muat() {
+      if (this.data) return this.data;
+      try { this.data = JSON.parse(localStorage.getItem(this.kunci) || 'null'); }
+      catch (e) { this.data = null; }
+      if (!this.data) this.data = { catatan: [], tanda: [], riwayat: [], nomor: 1 };
+      for (const k of ['catatan', 'tanda', 'riwayat']) {
+        if (!Array.isArray(this.data[k])) this.data[k] = [];
+      }
+      return this.data;
+    },
+    simpan() {
+      try { localStorage.setItem(this.kunci, JSON.stringify(this.data)); }
+      catch (e) { console.warn('penyimpanan peramban penuh', e); }
+    }
+  };
+
+  /** ambil judul kitab untuk sederet id sekaligus */
+  async function judulKitab(ids) {
+    const bersih = [...new Set(ids.filter(x => x != null))];
+    if (!bersih.length) return {};
+    const baris = await tanya(
+      'SELECT id, judul, fan_nama FROM kitab WHERE id IN (' +
+      bersih.map(() => '?').join(',') + ')', bersih);
+    const peta = {};
+    baris.forEach(b => peta[b.id] = b);
+    return peta;
+  }
+
+  const LOKAL = {
+    async catatanSemua() {
+      return MILIK.muat().catatan.slice().sort((a, b) =>
+        String(b.diubah).localeCompare(String(a.diubah)));
+    },
+    async catatanSimpan(c) {
+      const d = MILIK.muat(), skr = new Date().toISOString();
+      if (c.id) {
+        const a = d.catatan.find(x => x.id === c.id);
+        if (a) { a.judul = c.judul; a.isi = c.isi; a.label = c.label || ''; a.diubah = skr; }
+        MILIK.simpan();
+        return c.id;
+      }
+      const id = d.nomor++;
+      d.catatan.push({
+        id, judul: c.judul, isi: c.isi, label: c.label || '',
+        tempel_kitab: c.tempel_kitab || null, tempel_urut: c.tempel_urut || null,
+        asal: c.asal || 'ketik', dibuat: skr, diubah: skr
+      });
+      MILIK.simpan();
+      return id;
+    },
+    async catatanHapus(id) {
+      const d = MILIK.muat();
+      d.catatan = d.catatan.filter(x => x.id !== id);
+      MILIK.simpan();
+    },
+    async catatanCari(q) {
+      const n = String(q || '').toLowerCase();
+      return (await LOKAL.catatanSemua()).filter(c =>
+        String(c.judul || '').toLowerCase().includes(n) ||
+        String(c.isi || '').toLowerCase().includes(n)).slice(0, 50);
+    },
+    async tandaTambah(kitabId, urut, nama) {
+      const d = MILIK.muat();
+      if (!d.tanda.some(t => t.kitab_id === kitabId && t.urut === urut)) {
+        d.tanda.push({
+          id: d.nomor++, kitab_id: kitabId, urut,
+          nama: nama || '', dibuat: new Date().toISOString()
+        });
+        MILIK.simpan();
+      }
+    },
+    async tandaHapus(kitabId, urut) {
+      const d = MILIK.muat();
+      d.tanda = d.tanda.filter(t => !(t.kitab_id === kitabId && t.urut === urut));
+      MILIK.simpan();
+    },
+    async tandaAda(kitabId, urut) {
+      return MILIK.muat().tanda.some(t => t.kitab_id === kitabId && t.urut === urut);
+    },
+    async tandaSemua() {
+      const t = MILIK.muat().tanda.slice().sort((a, b) =>
+        String(b.dibuat).localeCompare(String(a.dibuat))).slice(0, 200);
+      const peta = await judulKitab(t.map(x => x.kitab_id));
+      return t.map(x => Object.assign({}, x, { judul: (peta[x.kitab_id] || {}).judul || '' }));
+    },
+    async riwayatSimpan(kitabId, urut) {
+      const d = MILIK.muat();
+      d.riwayat = d.riwayat.filter(r => r.kitab_id !== kitabId);
+      d.riwayat.unshift({ kitab_id: kitabId, urut, waktu: new Date().toISOString() });
+      d.riwayat = d.riwayat.slice(0, 60);
+      MILIK.simpan();
+    },
+    async riwayatAmbil(batas = 12) {
+      const r = MILIK.muat().riwayat.slice(0, batas);
+      const peta = await judulKitab(r.map(x => x.kitab_id));
+      return r.map(x => Object.assign({}, x, {
+        judul: (peta[x.kitab_id] || {}).judul || '',
+        fan_nama: (peta[x.kitab_id] || {}).fan_nama || ''
+      }));
+    }
+  };
+
+  const SQLAN = {
+    catatanSemua, catatanSimpan, catatanHapus, catatanCari,
+    tandaTambah, tandaHapus, tandaAda, tandaSemua,
+    riwayatSimpan, riwayatAmbil
+  };
+  /** pilih sendiri: kalau di Chrome pakai penyimpanan peramban, selain itu pakai SQL */
+  function bagi(nama) {
+    return (...a) => (mode === 'lokal' ? LOKAL : SQLAN)[nama](...a);
+  }
+
   return {
     seragam, kataKunci, bukaTeks, diAndroid,
     FS, SQ, MAP,
-    bukaPeramban, bukaAndroid, pasangDariBerkas, siapkanTabelPengguna,
+    bukaPeramban, bukaAndroid, bukaLokal, pasangDariBerkas, siapkanTabelPengguna,
     get mode() { return mode; },
     get siap() { return siap; },
     tanya, jalankan, satu,
     info, daftarFan, kitabDiFan, kitab,
     halaman, halamanPertama, halamanSebelahnya, babKitab,
-    cari, hitungCari, cariJudul, daftarKata, bukaDaftar,
-    catatanSemua, catatanSimpan, catatanHapus, catatanCari,
-    tandaTambah, tandaHapus, tandaAda, tandaSemua,
-    riwayatSimpan, riwayatAmbil
+    cari, hitungCari, cariJudul, daftarKata, bukaDaftar, saringKitab,
+    catatanSemua: bagi('catatanSemua'),
+    catatanSimpan: bagi('catatanSimpan'),
+    catatanHapus: bagi('catatanHapus'),
+    catatanCari: bagi('catatanCari'),
+    tandaTambah: bagi('tandaTambah'),
+    tandaHapus: bagi('tandaHapus'),
+    tandaAda: bagi('tandaAda'),
+    tandaSemua: bagi('tandaSemua'),
+    riwayatSimpan: bagi('riwayatSimpan'),
+    riwayatAmbil: bagi('riwayatAmbil')
   };
 })();

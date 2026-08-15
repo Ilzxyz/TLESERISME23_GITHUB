@@ -37,7 +37,9 @@ const S = {
   kitab: null,
   halaman: null,
   bab: [],
-  qTerakhir: ''
+  qTerakhir: '',
+  kitabCari: null,        // batasi pencarian ke satu kitab
+  namaKitabCari: ''
 };
 
 /* ============================================================
@@ -56,14 +58,162 @@ async function mulai() {
       else tampilPasang('Gagal membuka basis data: ' + (e.message || e));
     }
   } else {
-    // mode peramban: coba muat berkas contoh
-    try {
-      await DB.bukaPeramban('contoh.db');
-      await lanjutJalan();
-    } catch (e) {
-      tampilPasang('Mode peramban: berkas contoh.db tidak ada. ' +
-        'Di HP nanti pakai tleserisme.db yang asli.');
+    await mulaiChrome();
+  }
+}
+
+/* ============================================================
+   VERSI CHROME — baca tleserisme.db langsung dari harddisk
+   ============================================================ */
+const GUDANG = 'tleserisme23.pegangan';
+
+function bukaGudang() {
+  return new Promise((ok, gagal) => {
+    const p = indexedDB.open(GUDANG, 1);
+    p.onupgradeneeded = () => p.result.createObjectStore('berkas');
+    p.onsuccess = () => ok(p.result);
+    p.onerror = () => gagal(p.error);
+  });
+}
+async function simpanPegangan(h) {
+  try {
+    const db = await bukaGudang();
+    await new Promise(ok => {
+      const t = db.transaction('berkas', 'readwrite');
+      t.objectStore('berkas').put(h, 'db');
+      t.oncomplete = ok; t.onerror = ok;
+    });
+  } catch (e) { }
+}
+async function ambilPegangan() {
+  try {
+    const db = await bukaGudang();
+    return await new Promise(ok => {
+      const t = db.transaction('berkas', 'readonly');
+      const r = t.objectStore('berkas').get('db');
+      r.onsuccess = () => ok(r.result || null);
+      r.onerror = () => ok(null);
+    });
+  } catch (e) { return null; }
+}
+
+function layarChrome(isi, tombol) {
+  $('#pasang-teks').innerHTML =
+    'Perpustakaan Digital Fikih &amp; Bahtsul Masail<br>Versi Chrome';
+  const k = document.querySelector('#pasang .kotak');
+  if (k) k.innerHTML = isi;
+  $('#btn-pasang').textContent = tombol;
+  $('#btn-cari-sendiri').style.display = 'none';
+  $('#btn-periksa').style.display = 'none';
+  $('#btn-ulang').style.display = 'none';
+  const c = $('#btn-contoh');
+  c.style.display = 'block';
+  c.onclick = pakaiContoh;
+}
+
+const AJAKAN_BARU =
+  '<h4>◆ Cara pakai</h4>' +
+  '<ol>' +
+  '<li>Tekan tombol di bawah</li>' +
+  '<li>Pilih berkas <code>tleserisme.db</code> di komputermu</li>' +
+  '<li>Selesai — semua kitab langsung bisa dicari</li>' +
+  '</ol>' +
+  '<p style="font-size:11px;opacity:.75;margin:9px 0 0;line-height:1.8">' +
+  'Berkasnya dibaca langsung dari harddisk, sepotong demi sepotong. ' +
+  'Tidak disalin, tidak diunggah ke internet, dan tidak memenuhi memori. ' +
+  'Boleh ditaruh di drive mana saja.</p>';
+
+async function mulaiChrome() {
+  tampilPasang();
+  layarChrome(AJAKAN_BARU, 'Pilih berkas tleserisme.db');
+
+  const pegangan = await ambilPegangan();
+  if (pegangan) {
+    layarChrome(
+      '<h4>◆ Selamat datang kembali</h4>' +
+      '<p style="font-size:12.5px;color:var(--ink2);line-height:1.85;margin:0">' +
+      'Chrome sudah ingat berkas <code>' + (pegangan.name || 'tleserisme.db') +
+      '</code> yang kamu pakai terakhir kali.<br>' +
+      'Karena alasan keamanan, Chrome tetap minta satu ketukan darimu ' +
+      'sebelum boleh membacanya lagi.</p>',
+      'Buka perpustakaan');
+    $('#btn-pasang').onclick = () => pakaiPegangan(pegangan);
+    const ganti = $('#btn-cari-sendiri');
+    ganti.textContent = 'Pilih berkas lain…';
+    ganti.style.display = 'block';
+    ganti.onclick = pilihBerkasChrome;
+    return;
+  }
+  $('#btn-pasang').onclick = pilihBerkasChrome;
+}
+
+/** contoh kecil supaya orang bisa mencicipi tanpa punya berkas aslinya */
+async function pakaiContoh() {
+  try {
+    laporPasang('Mengambil contoh…');
+    const r = await fetch('uji/uji.db');
+    if (!r.ok) throw new Error('berkas contoh tidak ada di server');
+    const berkas = new File([await r.blob()], 'tleserisme.db');
+    await bukaBerkasChrome(berkas);
+  } catch (e) {
+    laporPasang('Gagal mengambil contoh: ' + (e.message || e), 'var(--bahaya)');
+  }
+}
+
+async function pakaiPegangan(h) {
+  try {
+    laporPasang('Meminta izin membaca berkas…');
+    let izin = await h.queryPermission({ mode: 'read' });
+    if (izin !== 'granted') izin = await h.requestPermission({ mode: 'read' });
+    if (izin !== 'granted') throw new Error('izin membaca berkas tidak diberikan');
+    const berkas = await h.getFile();
+    await bukaBerkasChrome(berkas);
+  } catch (e) {
+    laporPasang('Gagal: ' + (e.message || e) +
+      '<br><br>Coba tekan “Pilih berkas lain…”.', 'var(--bahaya)');
+  }
+}
+
+async function pilihBerkasChrome() {
+  try {
+    if (window.showOpenFilePicker) {
+      const [h] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [{ description: 'Basis data TLeserisme', accept: { 'application/octet-stream': ['.db'] } }]
+      });
+      await simpanPegangan(h);
+      const berkas = await h.getFile();
+      await bukaBerkasChrome(berkas);
+      return;
     }
+    // peramban lama: pakai jendela pemilih biasa
+    const inp = $('#berkas-pilih');
+    inp.onchange = async function () {
+      const f = this.files && this.files[0];
+      if (f) await bukaBerkasChrome(f);
+    };
+    inp.click();
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;      // pengguna membatalkan
+    laporPasang('Gagal: ' + (e.message || e), 'var(--bahaya)');
+  }
+}
+
+async function bukaBerkasChrome(berkas) {
+  try {
+    laporPasang('Membuka <b>' + berkas.name + '</b> (' +
+      rapiUkuran(berkas.size) + ')…');
+    const info = await DB.bukaLokal(berkas);
+    laporPasang('Berhasil — ' + Number(info.jml_kitab).toLocaleString('id-ID') +
+      ' kitab siap dicari.');
+    await lanjutJalan();
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    laporPasang('Gagal membuka: ' + m +
+      (/bukan tleserisme/.test(m)
+        ? '<br><br>Pastikan yang dipilih benar-benar <code>tleserisme.db</code>, ' +
+          'bukan <code>perpustakaan.db</code> atau <code>uji coba.db</code>.'
+        : ''), 'var(--bahaya)');
   }
 }
 
@@ -176,33 +326,63 @@ function bacaB64(irisan) {
   });
 }
 
+/** kalau satu langkah menggantung lebih dari sekian detik, laporkan — jangan diam */
+function dgnBatas(janji, detik, nama) {
+  return Promise.race([
+    janji,
+    new Promise((_, gagal) => setTimeout(
+      () => gagal(new Error('langkah "' + nama + '" menggantung lebih dari ' +
+        detik + ' detik — tidak ada jawaban dari Android')), detik * 1000))
+  ]);
+}
+
 async function salinDariPilihan(berkas) {
   const Filesystem = DB.FS();
-  if (!/\.db$/i.test(berkas.name)) {
-    throw new Error('yang dipilih bukan berkas .db (' + berkas.name + ')');
+  if (!berkas || !berkas.size) {
+    throw new Error('berkas yang dipilih kosong / tidak terbaca');
   }
-  try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
-  const POTONG = 3145728;               // 3 MB, kelipatan 3 supaya base64-nya rapi
+  if (!/\.db$/i.test(berkas.name || '')) {
+    throw new Error('yang dipilih bukan berkas .db (' + (berkas.name || '?') + ')');
+  }
+
+  laporPasang('Langkah 1/3 — membersihkan sisa lama…');
+  try {
+    await dgnBatas(
+      Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }), 30, 'hapus sisa lama');
+  } catch (e) { /* wajar kalau memang belum ada */ }
+
+  // potongan kecil: jembatan Android tidak sanggup menelan potongan besar
+  const POTONG = 245760;                 // 240 KB, kelipatan 3 supaya base64-nya rapi
   const total = berkas.size;
-  let sudah = 0, pertama = true, t0 = Date.now();
+  let sudah = 0, pertama = true, t0 = Date.now(), akhirLapor = 0;
+
   while (sudah < total) {
     const irisan = berkas.slice(sudah, Math.min(sudah + POTONG, total));
-    const b64 = await bacaB64(irisan);
-    if (pertama) {
-      await Filesystem.writeFile({ path: NAMA_BERKAS, directory: 'DATA', data: b64 });
-      pertama = false;
-    } else {
-      await Filesystem.appendFile({ path: NAMA_BERKAS, directory: 'DATA', data: b64 });
-    }
+
+    if (pertama) laporPasang('Langkah 2/3 — membaca potongan pertama…');
+    const b64 = await dgnBatas(bacaB64(irisan), 60, 'baca potongan');
+
+    if (pertama) laporPasang('Langkah 3/3 — menulis potongan pertama…');
+    const tulis = pertama
+      ? Filesystem.writeFile({ path: NAMA_BERKAS, directory: 'DATA', data: b64 })
+      : Filesystem.appendFile({ path: NAMA_BERKAS, directory: 'DATA', data: b64 });
+    await dgnBatas(tulis, 60, pertama ? 'tulis potongan pertama' : 'tulis potongan');
+    pertama = false;
+
     sudah += irisan.size;
-    const persen = (sudah / total) * 100;
-    const detik = (Date.now() - t0) / 1000;
-    const sisa = detik > 2 ? Math.round((total - sudah) / (sudah / detik) / 60) : null;
-    laporPasang('Menyalin <b>' + persen.toFixed(1) + '%</b> (' +
-      rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ')' +
-      (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
-      '<br><b>Jangan tutup aplikasi, jangan kunci layar.</b>');
-    await new Promise(r => setTimeout(r, 0));
+
+    const skr = Date.now();
+    if (skr - akhirLapor > 400 || sudah >= total) {
+      akhirLapor = skr;
+      const persen = (sudah / total) * 100;
+      const detik = (skr - t0) / 1000;
+      const sisa = detik > 3 ? Math.round((total - sudah) / (sudah / detik) / 60) : null;
+      laporPasang('Menyalin <b>' + persen.toFixed(1) + '%</b> (' +
+        rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ')' +
+        (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
+        '<br><b>Jangan tutup aplikasi, jangan kunci layar.</b>');
+      await new Promise(r => setTimeout(r, 0));
+    }
   }
 }
 
@@ -281,6 +461,7 @@ const JUDUL = {
 
 function pergi(nama) {
   S.layar = nama;
+  if (nama === 'jelajah' || nama === 'koleksi') S.sorot = [];
   $$('.layar').forEach(e => e.classList.toggle('on', e.dataset.layar === nama));
   $$('.nv').forEach(e => e.classList.toggle('on', e.dataset.pergi === nama));
   const j = JUDUL[nama] || JUDUL.beranda;
@@ -373,29 +554,36 @@ async function jalankanCari() {
   const w = $('#hasil');
   const q = $('#q').value.trim();
   S.qTerakhir = q;
+  S.sorot = q ? DB.kataKunci(q) : [];
   if (!q) { w.innerHTML = petunjukCari(); return; }
   w.innerHTML = `<div class="muat"><div class="puter"></div>mencari…</div>`;
 
   try {
     if (S.jenisCari === 'judul') return tampilJudul(await DB.cariJudul(q), q);
+    if (S.jenisCari === 'catatan' && S.kitabCari) { /* catatan tidak terikat kitab */ }
     if (S.jenisCari === 'catatan') return tampilCatatanCari(await DB.catatanCari(q), q);
 
     const t0 = performance.now();
     const [jml, rows] = await Promise.all([
-      DB.hitungCari(q, S.frasa, null),
-      DB.cari(q, { frasa: S.frasa, batas: 30 })
+      DB.hitungCari(q, S.frasa, null, S.kitabCari),
+      DB.cari(q, { frasa: S.frasa, kitabId: S.kitabCari, batas: 30 })
     ]);
     const ms = Math.round(performance.now() - t0);
     if (q !== S.qTerakhir) return;
 
     if (!rows.length) {
-      w.innerHTML = `<div class="kosong">Tidak ketemu.<br>
-        Coba kata yang lebih pendek, atau matikan <b>frasa persis</b>.</div>`;
+      w.innerHTML = `<div class="kosong">Tidak ketemu` +
+        (S.kitabCari
+          ? ` di <b class="ar">${esc(S.namaKitabCari)}</b>.<br>
+             Tekan tanda <b>✕</b> pada nama kitab di atas untuk mencari di semua kitab.`
+          : `.<br>Coba kata yang lebih pendek, atau matikan <b>frasa persis</b>.`) +
+        `</div>`;
       return;
     }
 
     const kata = DB.kataKunci(q);
     let h = `<div class="hitung">Ketemu <b>${angka(jml)}</b> paragraf
+      ${S.kitabCari ? '&middot; hanya di <b class="ar">' + esc(S.namaKitabCari) + '</b>' : ''}
       ${Setel.data.abaikan ? '&middot; harakat diabaikan' : ''}
       ${S.frasa ? '&middot; frasa persis' : ''} &middot; ${ms} md</div>`;
     h += rows.map(r => kartuHasil(r, kata)).join('');
@@ -493,6 +681,84 @@ function tandai(s, kata) {
 }
 
 /* ============================================================
+   BATASI PENCARIAN KE SATU KITAB
+   ============================================================ */
+function perbaruiChipKitab() {
+  const c = $('#tg-kitab');
+  if (S.kitabCari) {
+    const n = S.namaKitabCari || 'kitab terpilih';
+    c.innerHTML = '✕ ' + esc(n.length > 26 ? n.slice(0, 26) + '…' : n);
+    c.classList.add('on');
+  } else {
+    c.innerHTML = '▤ Semua kitab';
+    c.classList.remove('on');
+  }
+}
+
+function pakaiKitabCari(id, nama) {
+  S.kitabCari = id || null;
+  S.namaKitabCari = nama || '';
+  perbaruiChipKitab();
+  tutupTirai();
+  pergi('cari');
+  if ($('#q').value.trim()) jalankanCari();
+}
+
+async function bukaPemilihKitab() {
+  tirai('Cari di kitab mana?',
+    `<div class="cari-kotak" style="margin-bottom:12px">
+       <span style="color:var(--gold)">⌕</span>
+       <input id="q-pilih-kitab" placeholder="Ketik nama kitab…" autocomplete="off">
+     </div>
+     <button class="tombol lembut" id="btn-semua-kitab"
+             style="margin-bottom:12px">▤ Semua kitab (tanpa batas)</button>
+     <div id="hasil-pilih-kitab"></div>`);
+
+  $('#btn-semua-kitab').onclick = () => pakaiKitabCari(null, '');
+
+  const kotak = $('#hasil-pilih-kitab');
+  const inp = $('#q-pilih-kitab');
+
+  async function gambar(q) {
+    if (!q || q.trim().length < 2) {
+      kotak.innerHTML =
+        `<div class="kosong">Ketik minimal 2 huruf nama kitabnya.<br>
+         Contoh: <b>فتح</b> atau <b>fathul</b></div>`;
+      return;
+    }
+    kotak.innerHTML = `<div class="muat"><div class="puter"></div>mencari…</div>`;
+    try {
+      const kt = await DB.cariJudul(q.trim(), 40);
+      if (!kt.length) {
+        kotak.innerHTML = `<div class="kosong">Tidak ada kitab dengan nama itu.</div>`;
+        return;
+      }
+      kotak.innerHTML = kt.map(k => `
+        <button class="baris" data-pilih-kitab="${k.id}"
+                data-nama="${esc(k.judul || '')}">
+          <span class="lencana l-fikih">KTB</span>
+          <span class="n">
+            <span class="t ${arab(k.judul) ? 'ar' : ''}">${esc(k.judul || '')}</span>
+            <span class="m ${arab(k.pengarang) ? 'ar' : ''}">${esc(k.pengarang || '—')}
+              <span class="titik"></span>${angka(k.jml_halaman)} halaman</span>
+          </span>
+          <span style="color:var(--ink3)">›</span>
+        </button>`).join('');
+      kotak.querySelectorAll('[data-pilih-kitab]').forEach(b => {
+        b.onclick = () => pakaiKitabCari(+b.dataset.pilihKitab, b.dataset.nama);
+      });
+    } catch (e) {
+      kotak.innerHTML = `<div class="kosong">Gagal: ${esc(String(e.message || e))}</div>`;
+    }
+  }
+
+  let jeda = null;
+  inp.oninput = () => { clearTimeout(jeda); jeda = setTimeout(() => gambar(inp.value), 220); };
+  gambar('');
+  setTimeout(() => inp.focus(), 60);
+}
+
+/* ============================================================
    JELAJAH
    ============================================================ */
 let fanTermuat = false;
@@ -564,7 +830,9 @@ function gambarBaca() {
     `juz ${h.juz} <span class="titik"></span> halaman ${h.hal}
      <span class="titik"></span> ${angka(k.jml_halaman)} halaman`;
 
-  let t = esc(h.isi).replace(/&lt;ص:\s*(\d+)&gt;/g, '<span class="tanda-hal">ص $1</span>');
+  let t = (S.sorot && S.sorot.length)
+    ? tandai(h.isi, S.sorot)
+    : esc(h.isi).replace(/&lt;ص:\s*(\d+)&gt;/g, '<span class="tanda-hal">ص $1</span>');
   if (!Setel.data.harakat) t = t.replace(/[ً-ْٰ]/g, '');
   const el = $('#nass');
   el.innerHTML = t;
@@ -677,7 +945,7 @@ async function isiAtur() {
       <div class="set"><div class="n"><div class="t">Dibuat</div>
         <div class="s">${esc(i.dibuat || '-')}</div></div></div>
       <div class="set"><div class="n"><div class="t">Cara baca</div>
-        <div class="s">${DB.mode === 'android' ? 'SQLite bawaan HP' : 'peramban (uji coba)'}
+        <div class="s">${DB.mode === 'android' ? 'SQLite bawaan HP' : DB.mode === 'lokal' ? 'dibaca langsung dari harddisk' : 'peramban (uji coba)'}
         &middot; teks dimampatkan</div></div></div>`;
   } catch (e) { }
 }
@@ -744,6 +1012,15 @@ function pasangKendali() {
   $('#p-maju').onclick = () => lompat(1);
   $('#p-mundur').onclick = () => lompat(-1);
   $('#a-isi').onclick = bukaDaftarIsi;
+  $('#tg-kitab').onclick = () => {
+    if (S.kitabCari) { pakaiKitabCari(null, ''); return; }   // ✕ = lepas batasan
+    bukaPemilihKitab();
+  };
+  $('#a-cari-sini').onclick = () => {
+    if (!S.kitab) return;
+    pakaiKitabCari(S.kitab.id, S.kitab.judul || '');
+    setTimeout(() => $('#q').focus(), 80);
+  };
   $('#a-harakat').onclick = function () {
     Setel.data.harakat = !Setel.data.harakat; Setel.simpan();
     this.classList.toggle('on', Setel.data.harakat); gambarBaca();

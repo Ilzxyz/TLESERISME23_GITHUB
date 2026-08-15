@@ -17,24 +17,29 @@
      Basis data belum terpasang di perangkat ini.</p>
 
   <div class="kotak">
-    <h4>◆ Cara memasang basis data</h4>
+    <h4>◆ Cara tercepat (2–3 menit)</h4>
     <ol>
-      <li>Salin <code>tleserisme.db</code> dari komputer ke HP,
-          taruh di folder <code>Download</code></li>
-      <li>Pastikan sisa memori HP masih <b>±2 GB</b></li>
-      <li>Tekan <b>Pasang sekarang</b></li>
-      <li>Kalau berkasnya tidak ketemu sendiri, tekan
-          <b>Cari sendiri berkasnya</b> lalu pilih
-          <code>tleserisme.db</code> dari jendela yang muncul</li>
+      <li>Buka <b>Pengelola File</b> bawaan HP</li>
+      <li>Masuk ke <code>Android</code> → <code>data</code> →
+          <code>id.tleserisme23.app</code> → <code>files</code></li>
+      <li><b>Pindahkan</b> <code>tleserisme.db</code> dari folder
+          <code>Download</code> ke situ (pindahkan, bukan salin)</li>
+      <li>Kembali ke sini, tekan <b>Pasang sekarang</b></li>
     </ol>
-    <p style="font-size:11px;opacity:.7;margin:8px 0 0">
-      Cukup sekali. Sesudah ini aplikasi langsung jalan tanpa internet.</p>
+    <p style="font-size:11px;opacity:.75;margin:9px 0 0;line-height:1.8">
+      Kalau folder <code>Android/data</code> tidak bisa dibuka di HP-mu:
+      taruh saja <code>tleserisme.db</code> di folder <code>Download</code>,
+      lalu tekan <b>Cari sendiri berkasnya</b>. Cara ini jalan juga,
+      cuma lebih lama (10–25 menit).</p>
   </div>
 
   <button class="tombol" id="btn-pasang">Pasang sekarang</button>
   <div style="height:9px"></div>
   <button class="tombol lembut" id="btn-cari-sendiri" style="display:none">
     Cari sendiri berkasnya…</button>
+  <div style="height:9px"></div>
+  <button class="tombol lembut" id="btn-contoh" style="display:none">
+    Coba dulu pakai contoh (120 kitab)</button>
   <div style="height:9px"></div>
   <button class="tombol lembut" id="btn-periksa">Periksa lokasi berkas</button>
   <div style="height:9px"></div>
@@ -115,6 +120,9 @@
         <button class="chip on" id="tg-harakat">✓ Abaikan harakat</button>
         <button class="chip" id="tg-frasa">Frasa persis</button>
       </div>
+      <div class="chips">
+        <button class="chip" id="tg-kitab">▤ Semua kitab</button>
+      </div>
       <div id="hasil"></div>
     </div>
 
@@ -140,6 +148,7 @@
         <button class="a" id="a-salin"><div class="ic">⧉</div><div class="lb">Salin</div></button>
         <button class="a" id="a-catat"><div class="ic">✎</div><div class="lb">Catat</div></button>
         <button class="a" id="a-tanda"><div class="ic">★</div><div class="lb">Tandai</div></button>
+        <button class="a" id="a-cari-sini"><div class="ic">⌕</div><div class="lb">Cari di sini</div></button>
       </div>
       <div id="nass"></div>
       <div class="pager">

@@ -161,7 +161,9 @@ body.terang #baca-kepala{background:linear-gradient(150deg,#E8EFF9,#F6F9FC)}
 .alat .a{flex:1;background:var(--raise);border:1px solid var(--line);border-radius:11px;
   padding:9px 3px;text-align:center;cursor:pointer}
 .alat .a .ic{font-size:14px;line-height:1.2}
-.alat .a .lb{font-size:9.5px;color:var(--ink2);margin-top:2px}
+.alat .a .lb{font-size:9.5px;color:var(--ink2);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.pilih{border-color:var(--goldc);color:var(--gold2)}
 .alat .a.on{border-color:var(--goldc);background:linear-gradient(140deg,#3d2d12,#241a09)}
 .alat .a.on .lb{color:var(--gold2)}
 body.terang .alat .a.on{background:#FBF1DC}
