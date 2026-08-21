@@ -1,0 +1,32 @@
+# ============================================================
+#  TLeserisme23 — pengaturan untuk hosting cPanel
+#  Taruh berkas ini di dalam folder public_html
+#  (Penguncian nama pengguna & sandi TIDAK diatur di sini —
+#   pakai menu "Directory Privacy" di cPanel, jauh lebih mudah)
+# ============================================================
+
+# --- jenis berkas yang wajib dikenali ---
+AddType application/wasm            .wasm
+AddType text/javascript             .mjs
+AddType application/octet-stream    .db
+
+# --- layani permintaan sepotong-sepotong (ini nyawanya aplikasi) ---
+<IfModule mod_headers.c>
+  Header set Accept-Ranges bytes
+</IfModule>
+
+# --- JANGAN mampatkan basis data: pemampatan merusak permintaan potongan ---
+<IfModule mod_deflate.c>
+  SetEnvIfNoCase Request_URI \.db$   no-gzip dont-vary
+  SetEnvIfNoCase Request_URI \.wasm$ no-gzip dont-vary
+</IfModule>
+
+# --- basis data tidak pernah berubah, biar disimpan peramban lama-lama ---
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType application/octet-stream "access plus 7 days"
+  ExpiresByType application/wasm         "access plus 7 days"
+</IfModule>
+
+# --- halaman pembuka ---
+DirectoryIndex index.html

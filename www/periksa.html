@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pemeriksa TLeserisme23</title>
+<style>
+body{background:#0b1220;color:#e8eff8;font-family:system-ui,sans-serif;
+  font-size:14px;line-height:1.6;margin:0;padding:16px}
+h1{font-size:17px;color:#e9bc6b;margin:0 0 4px}
+.ket{color:#93a4bc;font-size:12.5px;margin:0 0 14px}
+.kotak{background:#131e30;border:1px solid #1f2e45;border-radius:12px;
+  padding:12px 14px;margin-bottom:12px}
+.kotak h2{font-size:13px;color:#e9bc6b;margin:0 0 8px}
+.baris{font-family:ui-monospace,monospace;font-size:12px;padding:3px 0;
+  border-bottom:1px solid #1a2740;word-break:break-word}
+.ok{color:#5fd8b4}.gagal{color:#e0644a}.jalan{color:#e9bc6b}
+button{background:#bb8830;border:0;color:#0b1220;font-weight:700;font-size:15px;
+  padding:13px;border-radius:11px;width:100%;margin-bottom:9px}
+button.lembut{background:#131e30;border:1px solid #2a3d59;color:#e8eff8}
+</style>
+</head>
+<body>
+<h1>Pemeriksa TLeserisme23</h1>
+<p class="ket">Halaman ini menguji satu per satu, dan mencatat hasilnya ke penyimpanan HP
+setiap langkah. Kalau halaman ini mati di tengah jalan, buka lagi — catatannya tetap ada.</p>
+
+<div class="kotak">
+  <h2>◆ Catatan pemeriksaan sebelumnya</h2>
+  <div id="lama"></div>
+</div>
+
+<button id="mulai">Mulai periksa</button>
+<button class="lembut" id="hapus">Hapus catatan</button>
+
+<div class="kotak">
+  <h2>◆ Sedang berjalan</h2>
+  <div id="skr"></div>
+</div>
+
+<script src="vendor/pako_inflate.umd.min.js"></script>
+<script src="db.js"></script>
+<script>
+const KUNCI = 'tleserisme23.jejak';
+const $ = s => document.querySelector(s);
+
+function bacaJejak() {
+  try { return JSON.parse(localStorage.getItem(KUNCI) || '[]'); } catch (e) { return []; }
+}
+function tulisJejak(a) {
+  try { localStorage.setItem(KUNCI, JSON.stringify(a)); } catch (e) { }
+}
+function gambar(el, a) {
+  el.innerHTML = a.length
+    ? a.map(x => `<div class="baris ${x.s}">${x.s === 'ok' ? '✓' : x.s === 'gagal' ? '✕' : '…'} ${x.t}</div>`).join('')
+    : '<div class="baris" style="color:#61748f">(kosong)</div>';
+}
+
+const jejak = [];
+function catat(status, teks) {
+  jejak.push({ s: status, t: teks });
+  tulisJejak(jejak);                 // langsung disimpan, jangan tunggu selesai
+  gambar($('#skr'), jejak);
+}
+
+async function langkah(nama, fn) {
+  catat('jalan', nama + ' …');
+  const t0 = Date.now();
+  try {
+    const hasil = await fn();
+    jejak.pop();
+    catat('ok', nama + ' — ' + (hasil === undefined ? 'selesai' : hasil) +
+      ' (' + (Date.now() - t0) + ' md)');
+    return hasil;
+  } catch (e) {
+    jejak.pop();
+    catat('gagal', nama + ' — GAGAL: ' + ((e && e.message) || e));
+    throw e;
+  }
+}
+
+gambar($('#lama'), bacaJejak());
+
+$('#hapus').onclick = () => { localStorage.removeItem(KUNCI); gambar($('#lama'), []); };
+
+$('#mulai').onclick = async () => {
+  jejak.length = 0; tulisJejak(jejak); gambar($('#skr'), jejak);
+  const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || 'data/tleserisme.db';
+  const KATA = 'الطهاره';
+  try {
+    catat('ok', 'peramban: ' + navigator.userAgent.slice(0, 70));
+
+    await langkah('1. buka basis data', async () => {
+      const i = await DB.bukaJauh(alamat, '');
+      return i.jml_kitab + ' kitab, ' + (i.ukuran / 1073741824).toFixed(2) + ' GB';
+    });
+
+    await langkah('2. baca tabel info', async () => {
+      const r = await DB.tanya('SELECT COUNT(*) n FROM info');
+      return r[0].n + ' baris';
+    });
+
+    const n = await langkah('3. cari kata di indeks', async () => {
+      const r = await DB.tanya('SELECT n FROM kata WHERE w = ?', [KATA]);
+      return r.length ? r[0].n + ' halaman' : 'tidak ada';
+    });
+
+    const daftar = await langkah('4. ambil daftar halaman', async () => {
+      const d = await DB.daftarKata(KATA);
+      window.__d = d;
+      return d.length + ' id, id pertama ' + d[0];
+    });
+
+    await langkah('5. ambil 30 keterangan halaman (tanpa teks)', async () => {
+      const p = window.__d.slice(0, 30);
+      const r = await DB.tanya(
+        'SELECT id,kitab_id,juz,hal FROM halaman WHERE id IN (' +
+        p.map(() => '?').join(',') + ')', p);
+      return r.length + ' baris';
+    });
+
+    await langkah('6. ambil 5 halaman BESERTA teksnya', async () => {
+      const p = window.__d.slice(0, 5);
+      const r = await DB.tanya(
+        'SELECT id,teks FROM halaman WHERE id IN (' +
+        p.map(() => '?').join(',') + ')', p);
+      const b = r.reduce((a, x) => a + (x.teks || '').length, 0);
+      window.__t = r;
+      return r.length + ' halaman, ' + Math.round(b / 1024) + ' KB termampat';
+    });
+
+    await langkah('7. buka mampatan 5 halaman itu', async () => {
+      let besar = 0, maks = 0;
+      for (const x of window.__t) {
+        const t = DB.bukaTeks(x.teks);
+        besar += t.length; maks = Math.max(maks, t.length);
+      }
+      return 'total ' + besar.toLocaleString('id-ID') +
+        ' huruf, terpanjang ' + maks.toLocaleString('id-ID');
+    });
+
+    await langkah('8. ambil 30 halaman beserta teks (yang berat)', async () => {
+      const p = window.__d.slice(0, 30);
+      const r = await DB.tanya(
+        'SELECT id,teks FROM halaman WHERE id IN (' +
+        p.map(() => '?').join(',') + ')', p);
+      const b = r.reduce((a, x) => a + (x.teks || '').length, 0);
+      return r.length + ' halaman, ' + Math.round(b / 1024) + ' KB termampat';
+    });
+
+    await langkah('9. pencarian penuh seperti di aplikasi', async () => {
+      const h = await DB.cariLengkap('الطهارة', { batas: 30 });
+      return h.jml + ' hasil, ' + h.rows.length + ' ditampilkan';
+    });
+
+    catat('ok', 'SEMUA LANGKAH LULUS — tidak ada yang bermasalah');
+  } catch (e) {
+    catat('gagal', 'BERHENTI DI SINI');
+  }
+};
+</script>
+</body>
+</html>

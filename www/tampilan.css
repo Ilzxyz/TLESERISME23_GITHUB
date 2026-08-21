@@ -1,0 +1,210 @@
+/* ============================================================
+   TLeserisme23 — LAPISAN TAMPILAN (overlay)
+   Dimuat SETELAH app.css. Tidak menyentuh logika apa pun —
+   hanya menimpa warna, menambah kaca, font tegas, & ornamen.
+   Satu warna induk: ubah --h, seluruh aplikasi ikut berganti.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap');
+
+:root{ --h:150; --h2:174; }
+
+/* ---------- PALET GELAP (bawaan) ---------- */
+:root{
+  --deep:hsl(var(--h) 32% 7%);
+  --surf:hsla(var(--h) 30% 10% / .55);
+  --raise:rgba(255,255,255,.055);
+  --raise2:rgba(255,255,255,.10);
+  --line:rgba(255,255,255,.12);
+  --line2:rgba(255,255,255,.20);
+  --ink:hsl(var(--h) 26% 96%);
+  --ink2:hsl(var(--h) 16% 72%);
+  --ink3:hsl(var(--h) 13% 52%);
+  --gold:hsl(var(--h) 70% 58%);
+  --gold2:hsl(var(--h) 78% 72%);
+  --goldc:hsl(var(--h) 62% 44%);
+  --blue:hsl(var(--h2) 66% 62%);
+  --blue2:hsl(var(--h2) 72% 74%);
+  --bluec:hsl(var(--h2) 60% 48%);
+  --teal:hsl(var(--h) 60% 45%);
+  --violet:hsl(285 55% 62%);
+  --ok:hsl(var(--h) 60% 50%);
+  --bahaya:#E0644A;
+  --seal1:hsl(var(--h) 42% 6%);
+  --seal2:hsl(var(--h) 46% 13%);
+}
+/* ---------- PALET TERANG ---------- */
+body.terang{
+  --deep:hsl(var(--h) 55% 95%);
+  --surf:rgba(255,255,255,.62);
+  --raise:rgba(255,255,255,.55);
+  --raise2:rgba(255,255,255,.75);
+  --line:hsla(var(--h) 30% 35% / .14);
+  --line2:hsla(var(--h) 30% 35% / .22);
+  --ink:hsl(var(--h) 42% 14%);
+  --ink2:hsl(var(--h) 22% 36%);
+  --ink3:hsl(var(--h) 15% 52%);
+  --gold:hsl(var(--h) 66% 36%);
+  --gold2:hsl(var(--h) 70% 30%);
+  --goldc:hsl(var(--h) 58% 42%);
+  --blue:hsl(var(--h2) 60% 42%);
+  --seal1:hsl(var(--h) 42% 10%);
+  --seal2:hsl(var(--h) 46% 18%);
+}
+
+/* ---------- LATAR BERAURORA ---------- */
+body{background:linear-gradient(162deg,var(--deep),hsl(var(--h) 34% 5%)) fixed !important}
+body.terang{background:linear-gradient(162deg,var(--deep),hsl(var(--h2) 45% 90%)) fixed !important}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.45;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23889988' stroke-width='.6' opacity='.16'%3E%3Cpath d='M32 3 36 28 61 32 36 36 32 61 28 36 3 32 28 28Z'/%3E%3Ccircle cx='32' cy='32' r='11'/%3E%3C/g%3E%3C/svg%3E");
+  animation:tlpan 70s linear infinite}
+@keyframes tlpan{to{background-position:640px 640px}}
+.tl-aurora{position:fixed;inset:-30% -10% -10% -10%;z-index:0;filter:blur(34px);pointer-events:none}
+.tl-aurora i{position:absolute;border-radius:50%;opacity:.5;animation:tldrift 24s ease-in-out infinite}
+body.terang .tl-aurora i{opacity:.42}
+.tl-aurora i:nth-child(1){width:52vw;height:52vw;left:-8vw;top:-6vw;
+  background:radial-gradient(circle,hsl(var(--h) 65% 60%),transparent 60%);animation-duration:26s}
+.tl-aurora i:nth-child(2){width:46vw;height:46vw;right:-6vw;top:0;
+  background:radial-gradient(circle,hsl(var(--h2) 62% 58%),transparent 60%);animation-duration:20s;animation-delay:-6s}
+.tl-aurora i:nth-child(3){width:40vw;height:40vw;left:22vw;bottom:-12vw;
+  background:radial-gradient(circle,hsl(var(--h) 55% 52%),transparent 60%);animation-duration:32s;animation-delay:-12s}
+@keyframes tldrift{0%,100%{transform:translate(0,0) scale(1)}
+  33%{transform:translate(6vw,4vh) scale(1.12)}66%{transform:translate(-5vw,-3vh) scale(.94)}}
+/* mode baca: latar diadem-kan biar fokus (ornamen memang tak ada di sini) */
+body:has([data-layar="baca"].on) .tl-aurora{opacity:.12}
+body:has([data-layar="baca"].on)::before{animation:none;opacity:.22}
+
+/* rangka & isi harus di atas latar */
+#aplikasi,#pasang{position:relative;z-index:1}
+
+/* ---------- EFEK KACA ---------- */
+#bilah,#nav,.hero,.kpi,.baris,.hit,.grup,.cari-kotak,.kt-baris,.simpul,
+.pager,#baca-kepala,#tirai .panel,#pasang .kotak,.alat .a,.kt-lagi{
+  -webkit-backdrop-filter:blur(18px) saturate(165%);
+  backdrop-filter:blur(18px) saturate(165%);
+}
+#bilah,#nav{background:var(--surf)}
+.hero,#baca-kepala{background:linear-gradient(135deg,rgba(255,255,255,.10),rgba(255,255,255,.03)) !important;
+  border:1px solid var(--line2)}
+body.terang .hero,body.terang #baca-kepala{
+  background:linear-gradient(135deg,rgba(255,255,255,.6),rgba(255,255,255,.32)) !important}
+.hero{border-radius:24px}
+.chip,.q-cari,.tombol{-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+
+/* ---------- FONT TEGAS (runcing) ---------- */
+.hero .big,#pasang h1,.judul-bag h3,#bilah .jd .t{
+  font-family:'Cinzel',Georgia,serif;letter-spacing:.01em}
+.hero .big{text-transform:uppercase;font-weight:800;line-height:1.14;font-size:20px}
+#bilah .jd .t{font-weight:700;letter-spacing:.04em}
+.hero .hi{font-weight:700;letter-spacing:.16em}
+.hero .sm,.kpi .sub{font-family:'Cormorant Garamond',serif;font-size:14.5px}
+
+/* ---------- BILAH: logo jadi seal ---------- */
+#bilah .mark{width:38px;height:38px;border-radius:50%;padding:5px;object-fit:contain;
+  background:radial-gradient(circle at 38% 32%,var(--seal2),var(--seal1));
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 4px 14px hsla(var(--h) 50% 15%/.5),inset 0 1px 5px rgba(255,255,255,.14)}
+
+/* ---------- KPI aksen ---------- */
+.kpi .val{font-family:'Cinzel',serif;font-weight:800}
+
+/* ============================================================
+   ORNAMEN + GERAKAN  (hanya di BERANDA & PEMASANGAN)
+   Elemen di bawah cuma disuntik ke dua layar itu, jadi di
+   mode Cari / Baca / Jelajah otomatis DIAM — tidak ada.
+   ============================================================ */
+.tl-seal-blk{text-align:center;padding:10px 0 4px;margin-bottom:14px;position:relative;overflow:hidden}
+.tl-seal-wrap{position:relative;width:138px;height:138px;margin:2px auto 12px;animation:tlbob 5s ease-in-out infinite}
+@keyframes tlbob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.tl-halo{position:absolute;inset:-20px;border-radius:50%;z-index:-1;
+  background:radial-gradient(circle,hsla(var(--h) 75% 52%/.42),transparent 62%);
+  animation:tlnapas 3.6s ease-in-out infinite}
+@keyframes tlnapas{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.14);opacity:1}}
+.tl-ring-o{position:absolute;inset:0;color:var(--gold);animation:tlspin 40s linear infinite}
+.tl-ring-i{position:absolute;inset:11px;color:var(--blue);animation:tlspin 26s linear infinite reverse}
+@keyframes tlspin{to{transform:rotate(360deg)}}
+.tl-seal{position:absolute;inset:18px;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 38% 30%,var(--seal2),var(--seal1));
+  box-shadow:0 12px 38px hsla(var(--h) 50% 15%/.55),inset 0 2px 10px rgba(255,255,255,.12),inset 0 -8px 20px rgba(0,0,0,.4);
+  border:1px solid rgba(255,255,255,.14)}
+.tl-seal img{width:72%;height:72%;object-fit:contain;filter:drop-shadow(0 3px 8px rgba(0,0,0,.4))}
+.tl-spark{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--gold);opacity:0;
+  animation:tlspark 6s linear infinite}
+@keyframes tlspark{0%{transform:translateY(20px) scale(.6);opacity:0}
+  15%{opacity:.7}85%{opacity:.5}100%{transform:translateY(-116px) scale(1);opacity:0}}
+.tl-word{font-family:'Cinzel',serif;font-weight:800;font-size:27px;letter-spacing:.06em;
+  position:relative;display:inline-block;color:var(--ink);overflow:hidden}
+.tl-word b{color:var(--gold)}
+.tl-word::after{content:"";position:absolute;top:0;left:-120%;width:60%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.65),transparent);
+  transform:skewX(-18deg);animation:tlshine 5.5s ease-in-out infinite}
+@keyframes tlshine{0%,55%{left:-120%}80%,100%{left:130%}}
+.tl-tag{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:14px;color:var(--ink2);margin-top:3px}
+.tl-div{display:flex;align-items:center;gap:12px;max-width:210px;margin:12px auto 0;color:var(--gold)}
+.tl-div::before,.tl-div::after{content:"";flex:1;height:1px;
+  background:linear-gradient(90deg,transparent,var(--line2),transparent)}
+.tl-khatam{width:15px;height:15px;color:var(--gold);animation:tlspin 18s linear infinite}
+
+/* sudut arabesque di hero beranda */
+.tl-sudut{position:absolute;width:50px;height:50px;color:var(--gold);opacity:.45;pointer-events:none}
+.tl-sudut.tl{top:10px;left:10px}.tl-sudut.tr{top:10px;right:10px;transform:scaleX(-1)}
+.tl-sudut.bl{bottom:10px;left:10px;transform:scaleY(-1)}.tl-sudut.br{bottom:10px;right:10px;transform:scale(-1,-1)}
+
+/* pemasangan: seal besar */
+#pasang .tl-seal-blk{margin-bottom:6px}
+
+/* ---------- PEMILIH WARNA (di Atur) ---------- */
+.tl-warna{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;padding:15px 12px 6px}
+.tl-wp{width:46px;height:46px;border-radius:14px;cursor:pointer;position:relative;
+  transition:.2s cubic-bezier(.22,.61,.36,1);border:2px solid transparent;display:grid;place-items:center}
+.tl-wp:active{transform:scale(.9)}
+.tl-wp.sel{border-color:var(--ink);box-shadow:0 6px 18px rgba(0,0,0,.3)}
+.tl-wp.sel::after{content:"";width:10px;height:10px;border-radius:50%;background:#fff;
+  box-shadow:0 0 0 2px rgba(0,0,0,.25)}
+.tl-wp-l{text-align:center;font-size:11px;color:var(--ink3);padding-bottom:12px}
+
+/* ---------- SELARASKAN STATUS AKTIF KE WARNA INDUK ----------
+   (app.css meng-hardcode coklat-emas; ini menariknya ke --h) */
+.chip.on,.alat .a.on,.tbl.on,.q-cari,
+body.terang .chip.on,body.terang .alat .a.on,body.terang .tbl.on{
+  background:linear-gradient(140deg,var(--goldc),var(--gold)) !important;
+  border-color:var(--goldc) !important;color:#fff !important}
+.alat .a.on .lb{color:#fff !important}
+.tombol{background:linear-gradient(140deg,var(--goldc),var(--gold)) !important;color:#07140e !important}
+.tombol.lembut{background:var(--raise) !important;color:var(--ink) !important}
+.nv.on .ic{filter:drop-shadow(0 0 8px hsla(var(--h) 72% 55% / .6)) !important}
+.nv.on .lb{color:var(--gold) !important}
+mark{background:hsla(var(--h) 72% 55% / .28) !important;color:var(--gold2) !important}
+body.terang mark{background:hsla(var(--h) 60% 62% / .32) !important;color:var(--gold2) !important}
+.hit{border-left-color:var(--goldc) !important}
+
+/* ---------- MATAN vs SYARAH ----------
+   Teks dalam kurung ( ) = matan -> diberi warna aksen + tebal supaya
+   langsung kebedain dari syarah/hasyiyah di sekelilingnya. */
+/* render \n\n dari database jadi ENTER antar-paragraf (biar nggak nyambung
+   satu blok, matan & syarah kepisah rapi seperti di Maktabah) */
+#nass{ white-space:pre-wrap; }
+#nass .tl-matan{ color:var(--gold); font-weight:700; unicode-bidi:isolate; }
+body.terang #nass .tl-matan{ color:var(--goldc); }
+
+@media (prefers-reduced-motion:reduce){
+  .tl-seal-wrap,.tl-halo,.tl-ring-o,.tl-ring-i,.tl-spark,.tl-word::after,
+  .tl-khatam,.tl-aurora i,body::before{animation:none !important}
+}
+
+/* ---------- "Tampilkan lebih banyak" (paginasi hasil cari) ----------
+   Semua paragraf tetap bisa dibuka; dicicil per-jendela, bukan sekaligus. */
+#cari-lanjut{ text-align:center; }
+.muat-lagi{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  margin:14px auto 4px; padding:11px 22px; cursor:pointer;
+  font:inherit; font-size:13px; font-weight:700; letter-spacing:.2px;
+  color:var(--gold); background:hsla(var(--h) 60% 46% / .12);
+  border:1px solid hsla(var(--h) 60% 55% / .38); border-radius:13px;
+  transition:background .18s, border-color .18s, transform .1s;
+}
+.muat-lagi:hover{ background:hsla(var(--h) 62% 50% / .2); border-color:hsla(var(--h) 62% 60% / .6); }
+.muat-lagi:active{ transform:translateY(1px); }
+.muat-lagi:disabled{ opacity:.6; cursor:default; }
+body.terang .muat-lagi{ color:var(--goldc); }
+.lanjut-cat{ margin:8px 0 20px; font-size:11px; color:var(--ink3); }

@@ -94,6 +94,10 @@ body.terang .hero{background:linear-gradient(150deg,#E8EFF9,#F6F9FC)}
 .cari-kotak:focus-within{border-color:var(--goldc)}
 .cari-kotak input{flex:1;background:none;border:0;outline:0;font-size:15px;min-width:0}
 .cari-kotak input::placeholder{color:var(--ink3)}
+.q-cari{flex:none;background:linear-gradient(140deg,#3d2d12,#241a09);
+  border:1px solid var(--goldc);color:var(--gold2);font-weight:650;font-size:12.5px;
+  padding:7px 15px;border-radius:100px;cursor:pointer;white-space:nowrap}
+.q-cari:active{background:var(--raise2)}
 
 .kpi2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
 .kpi{background:var(--raise);border:1px solid var(--line);border-radius:15px;padding:12px 13px}
@@ -272,3 +276,37 @@ body.terang .alat .a.on{background:#FBF1DC}
 textarea.isian,input.isian{width:100%;background:var(--raise);border:1px solid var(--line2);
   border-radius:11px;padding:11px 13px;outline:0;margin-bottom:10px;resize:vertical}
 textarea.isian{min-height:130px;line-height:1.7}
+
+/* ---------------- dokumen pribadi ---------------- */
+.l-dok{background:rgba(132,87,188,.18);color:#C9A6F0;border:1px solid rgba(132,87,188,.45)}
+.hit.milik{border-left-color:var(--violet)}
+.hit.milik .src{color:#C9A6F0}
+.dok-baca{font-size:14px;line-height:1.95;white-space:pre-wrap;word-break:break-word;
+  -webkit-user-select:text;user-select:text}
+.dok-baca.ar{font-family:var(--ar);direction:rtl;text-align:right;
+  font-size:var(--ukuran-ar);line-height:var(--tinggi-ar)}
+.dok-baca mark{background:rgba(233,188,107,.28);color:inherit;border-radius:3px;padding:0 1px}
+
+/* ---------------- daftar kitab ---------------- */
+.kt-baris{display:flex;gap:11px;align-items:center;background:var(--raise);
+  border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:7px;
+  cursor:pointer;width:100%;text-align:left}
+.kt-baris:active{background:var(--raise2)}
+.kt-baris .nm{flex:1;min-width:0}
+.kt-baris .nm .j{display:block;font-size:14px;font-weight:600;line-height:1.45;
+  overflow-wrap:anywhere}
+.kt-baris .nm .j.ar{font-family:var(--ar);font-size:18px;direction:rtl;
+  text-align:right;line-height:1.9}
+.kt-baris .nm .k{display:block;font-size:10.5px;color:var(--ink3);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kt-baris .nm .k.ar{direction:rtl;text-align:right}
+.kt-baris .jml{flex:none;font-size:10.5px;color:var(--ink3);text-align:right;
+  min-width:52px}
+.kt-baris .tanda{flex:none;width:30px;height:30px;border-radius:9px;display:grid;
+  place-items:center;font-size:9.5px;font-weight:700}
+.kt-kepala{font-size:12px;color:var(--ink3);margin:4px 0 10px}
+.kt-kepala b{color:var(--gold);font-weight:650}
+.kt-lagi{background:var(--raise);border:1px dashed var(--line2);color:var(--ink2);
+  border-radius:12px;padding:11px;width:100%;cursor:pointer;font-size:13px;
+  margin-top:4px}
+.kt-anggota{margin:0 0 9px 14px;padding-left:11px;border-left:2px solid var(--line2)}

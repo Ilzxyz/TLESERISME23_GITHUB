@@ -125,6 +125,11 @@ const AJAKAN_BARU =
 
 async function mulaiChrome() {
   tampilPasang();
+
+  // kalau basis datanya sudah ditaruh di internet, pakai itu
+  const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
+  if (alamat) return await mulaiDariInternet(alamat);
+
   layarChrome(AJAKAN_BARU, 'Pilih berkas tleserisme.db');
 
   const pegangan = await ambilPegangan();
@@ -145,6 +150,74 @@ async function mulaiChrome() {
     return;
   }
   $('#btn-pasang').onclick = pilihBerkasChrome;
+}
+
+/* ---------- basis data yang tinggal di internet (terkunci) ---------- */
+const SIMPAN_KUNCI = 'tleserisme23.kunci';
+function kunciTersimpan() {
+  try { return localStorage.getItem(SIMPAN_KUNCI) || ''; } catch (e) { return ''; }
+}
+function simpanKunci(k) {
+  try { localStorage.setItem(SIMPAN_KUNCI, k); } catch (e) { }
+}
+
+async function mulaiDariInternet(alamat) {
+  layarChrome(
+    '<h4>◆ Menyambung ke perpustakaan</h4>' +
+    '<p style="font-size:12.5px;color:var(--ink2);line-height:1.85;margin:0">' +
+    'Tidak ada yang perlu kamu unduh. Kitabnya dibaca langsung dari internet, ' +
+    'sepotong demi sepotong, sesuai yang kamu cari saja.</p>',
+    'Coba sambungkan lagi');
+  $('#btn-pasang').onclick = () => mulaiDariInternet(alamat);
+  $('#btn-contoh').style.display = 'none';
+  laporPasang('Menyambung…');
+  try {
+    const info = await DB.bukaJauh(alamat, kunciTersimpan());
+    laporPasang('Tersambung — ' +
+      Number(info.jml_kitab).toLocaleString('id-ID') + ' kitab.');
+    await lanjutJalan();
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    if (/ditolak|401|403/.test(m)) {
+      // hosting yang memakai sandi bawaan peramban: cukup muat ulang halaman
+      if (window.KONFIG && window.KONFIG.SANDI_PERAMBAN) {
+        laporPasang('Perpustakaan ini terkunci dan sesi masukmu sudah berakhir.' +
+          '<br><br>Muat ulang halaman ini (tekan F5 atau tarik layar ke bawah), ' +
+          'lalu masukkan lagi nama pengguna dan sandinya.', 'var(--bahaya)');
+        return;
+      }
+      return mintaKunci(alamat);
+    }
+    laporPasang('Tidak bisa menyambung.<br><br>' +
+      '<span style="font-size:11.5px;line-height:1.9;opacity:.9">' + esc(m) + '</span>' +
+      '<br><br>Periksa sambungan internetmu, lalu tekan tombol di atas.',
+      'var(--bahaya)');
+  }
+}
+
+function mintaKunci(alamat) {
+  layarChrome(
+    '<h4>◆ Perpustakaan ini terkunci</h4>' +
+    '<p style="font-size:12.5px;color:var(--ink2);line-height:1.85;margin:0 0 12px">' +
+    'Masukkan kunci yang diberikan pemilik perpustakaan.</p>' +
+    '<div class="cari-kotak" style="margin:0">' +
+    '<span style="color:var(--gold)">⚿</span>' +
+    '<input id="kunci" type="password" placeholder="Kunci…" autocomplete="current-password">' +
+    '</div>',
+    'Masuk');
+  const kirim = async () => {
+    const k = (($('#kunci') || {}).value || '').trim();
+    if (!k) { laporPasang('Kuncinya belum diisi.', 'var(--bahaya)'); return; }
+    simpanKunci(k);
+    laporPasang('Memeriksa kunci…');
+    await mulaiDariInternet(alamat);
+  };
+  $('#btn-pasang').onclick = kirim;
+  const inp = $('#kunci');
+  if (inp) {
+    inp.onkeydown = (e) => { if (e.key === 'Enter') kirim(); };
+    setTimeout(() => inp.focus(), 60);
+  }
 }
 
 /** contoh kecil supaya orang bisa mencicipi tanpa punya berkas aslinya */
@@ -217,11 +290,128 @@ async function bukaBerkasChrome(berkas) {
   }
 }
 
+/* ------------------------------------------------------------
+   Kembali ke tempat terakhir
+   ------------------------------------------------------------
+   HP boleh saja membunuh halaman ini kapan pun ingatannya sempit —
+   itu di luar kuasa kita. Yang ada di tangan kita: begitu halamannya
+   hidup lagi, kembalikan orangnya ke tempat dia tadi berhenti.
+   Dengan begini "aplikasinya nge-crash" berubah jadi "layarnya
+   berkedip sebentar".
+   ------------------------------------------------------------ */
+const KUNCI_POSISI = 'tleserisme23.posisi';
+
+function simpanPosisi() {
+  try {
+    sessionStorage.setItem(KUNCI_POSISI, JSON.stringify({
+      layar: S.layar,
+      q: ($('#q') || {}).value || '',
+      jenisCari: S.jenisCari,
+      frasa: S.frasa,
+      kitabCari: S.kitabCari,
+      namaKitabCari: S.namaKitabCari,
+      kitab: S.kitab ? S.kitab.id : null,
+      urut: S.halaman ? S.halaman.urut : null,
+      gulir: (($('#isi') || {}).scrollTop) || 0,
+      bagian: S.tampilSampai || 0,
+      daftar: (typeof KAT !== 'undefined') ? KAT.jenis : 'kitab',
+      waktu: Date.now()
+    }));
+  } catch (e) { }
+}
+
+function ambilPosisi() {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(KUNCI_POSISI) || 'null');
+    // lebih dari sejam berarti bukan lanjutan, tapi kunjungan baru
+    if (p && Date.now() - (p.waktu || 0) < 3600000) return p;
+  } catch (e) { }
+  return null;
+}
+
+/* Kalau yang bikin halaman mati justru tempat terakhirnya sendiri — misal satu
+   halaman kitab yang kelewat besar — mengembalikan orangnya ke situ berarti
+   memutar lingkaran mati yang sama terus. Jadi dihitung: tiga kali berturut-turut
+   halaman mati sebelum sempat hidup 20 detik, pemulihannya dilepas dan orangnya
+   ditaruh di Beranda. */
+const KUNCI_ULANG = 'tleserisme23.pulih';
+
+function hitungPulih() {
+  let n = 0;
+  try { n = (+sessionStorage.getItem(KUNCI_ULANG) || 0) + 1; sessionStorage.setItem(KUNCI_ULANG, n); }
+  catch (e) { }
+  /* Halamannya mati di rentang 15-60 detik. Kalau hitungan ini disetel ulang
+     terlalu cepat, tiap putaran mati dianggap "yang pertama" dan lingkarannya
+     tidak pernah dianggap lingkaran. Jadi tunggu 90 detik: baru sesudah
+     halaman benar-benar bertahan selama itu, tempat terakhirnya dianggap aman. */
+  setTimeout(() => { try { sessionStorage.setItem(KUNCI_ULANG, '0'); } catch (e) { } }, 90000);
+  return n;
+}
+
+async function pulihkanPosisi() {
+  const p = ambilPosisi();
+  if (!p || p.layar === 'beranda') { hitungPulih(); return false; }
+  if (hitungPulih() > 3) {
+    try { sessionStorage.removeItem(KUNCI_POSISI); } catch (e) { }
+    return false;
+  }
+  try {
+    if (p.jenisCari) S.jenisCari = p.jenisCari;
+    S.frasa = !!p.frasa;
+    /* Pembatas "cari di satu kitab saja" sengaja TIDAK dikembalikan.
+       Di catatan jejak kelihatan pembatas itu masih menempel berhari-hari
+       tanpa disadari: kata seumum "مصلحة مرسلة" dijawab 0 hasil, padahal
+       yang salah cuma karena pencariannya dikurung di satu kitab. Itu mode
+       yang dipilih dengan sengaja, jadi biar dipilih ulang dengan sengaja. */
+    S.kitabCari = null;
+    S.namaKitabCari = '';
+    if (typeof KAT !== 'undefined' && p.daftar) KAT.jenis = p.daftar;
+
+    if (p.layar === 'baca' && p.kitab) {
+      await bukaKitab(p.kitab, p.urut || 1);
+      /* Sampai di halaman yang sama tapi terlempar ke paragraf pertama masih
+         terasa seperti kehilangan tempat. Bagian lanjutan yang tadi sudah
+         dibuka digambar ulang dulu, baru gulirannya dikembalikan. */
+      while ((S.tampilSampai || 0) < (p.bagian || 0) &&
+             S.halaman && S.tampilSampai < S.halaman.isi.length) {
+        tambahBagianHalaman();
+      }
+      if (p.gulir > 0) {
+        requestAnimationFrame(() => { $('#isi').scrollTop = p.gulir; });
+      }
+      return true;
+    }
+    if (p.layar === 'cari' && p.q) {
+      /* Kata kuncinya dikembalikan, tapi pencariannya TIDAK dijalankan sendiri.
+         Kalau pencarian itu sendiri yang bikin halamannya mati, menjalankannya
+         otomatis sesudah hidup lagi sama saja dengan memasang lingkaran mati. */
+      pergi('cari');
+      $('#q').value = p.q;
+      $('#q-hapus').style.display = 'block';
+      $$('.chip[data-j]').forEach(c => c.classList.toggle('on', c.dataset.j === S.jenisCari));
+      $('#hasil').innerHTML = `<div class="kosong" style="padding:22px">
+        Kata kuncimu masih tersimpan di atas.<br>
+        Tekan <b>Cari</b> untuk menjalankannya lagi.</div>`;
+      return true;
+    }
+    if (p.layar === 'jelajah' || p.layar === 'koleksi' || p.layar === 'atur') {
+      if (typeof KAT !== 'undefined') {
+        $$('#pilih-daftar .chip').forEach(c =>
+          c.classList.toggle('on', c.dataset.daftar === KAT.jenis));
+      }
+      pergi(p.layar);
+      return true;
+    }
+  } catch (e) { console.warn('pulihkan posisi:', e); }
+  return false;
+}
+
 async function lanjutJalan() {
   await DB.siapkanTabelPengguna();
   $('#pasang').classList.remove('on');
   $('#aplikasi').style.display = 'flex';
   await isiBeranda();
+  await pulihkanPosisi();
 }
 
 function tampilPasang(pesan) {
@@ -453,26 +643,37 @@ async function pakaiBerkasPilihan(berkas) {
 const JUDUL = {
   beranda: ['TLeserisme23', 'Perpustakaan Fikih & Bahtsul Masail'],
   cari: ['Pencarian', 'Hasil per paragraf'],
-  jelajah: ['Jelajah', 'Fan ilmu & kitab'],
+  jelajah: ['Daftar kitab', 'Isi perpustakaan'],
   baca: ['Sedang dibaca', ''],
   koleksi: ['Koleksi saya', 'Catatan pribadi'],
   atur: ['Pengaturan', '']
 };
 
 function pergi(nama) {
+  if (S.layar === 'jelajah' && nama !== 'jelajah' && typeof KAT !== 'undefined') {
+    KAT.lepas();
+    const w = $('#daftar-kitab');
+    if (w) w.innerHTML = '';          // lepaskan juga baris-baris di layar
+  }
   S.layar = nama;
   if (nama === 'jelajah' || nama === 'koleksi') S.sorot = [];
+  if (nama === 'koleksi' && window.DOK) isiDaftarDokumen();
   $$('.layar').forEach(e => e.classList.toggle('on', e.dataset.layar === nama));
   $$('.nv').forEach(e => e.classList.toggle('on', e.dataset.pergi === nama));
   const j = JUDUL[nama] || JUDUL.beranda;
   $('#bilah-t').textContent = j[0];
   $('#bilah-s').textContent = j[1] || '—';
   $('#isi').scrollTop = 0;
-  if (nama === 'cari') setTimeout(() => $('#q').focus(), 80);
-  if (nama === 'jelajah') isiPohon();
+  if (nama === 'cari') {
+    // panaskan mesin cari diam-diam sambil orangnya belum selesai mengetik
+    if (window.DB && DB.prapanas) DB.prapanas();
+    setTimeout(() => $('#q').focus(), 80);
+  }
+  if (nama === 'jelajah') gambarJelajah();
   if (nama === 'koleksi') isiKoleksi();
   if (nama === 'atur') isiAtur();
   if (nama === 'beranda') isiBeranda();
+  simpanPosisi();
 }
 
 /* ============================================================
@@ -515,12 +716,36 @@ async function isiBeranda() {
 let jamCari = null;
 
 function pasangCari() {
+  /* Pencarian dijalankan waktu DIMINTA, bukan tiap huruf diketik.
+     Mencari sambil mengetik berarti kata "الطهارة" dicari tujuh kali — tujuh
+     kali menyisir indeks, tujuh kali menarik potongan dari berkas 1,5 GB —
+     padahal enam di antaranya kata yang belum selesai. Menunggu tombol Cari
+     bikin hasilnya justru terasa lebih cepat, dan HP tidak dipaksa bekerja
+     untuk pertanyaan yang tidak pernah ditanyakan. */
   const q = $('#q');
+  /* Satu ketukan "Cari" di papan ketik HP memicu DUA peristiwa: keydown Enter,
+     lalu change waktu kotaknya kehilangan fokus karena blur() di bawah.
+     Tanpa penjaga ini, tiap pencarian dijalankan dua kali — dan itu terbukti
+     di catatan jejak dari iPhone: "CARI data siap" muncul dua kali berturut-turut
+     untuk kata yang sama. Kerjanya dobel, ingatannya dobel, tepat sebelum
+     halamannya dibunuh. */
+  let mintaTerakhir = '', mintaJam = 0;
+  const minta = () => {
+    const kata = q.value.trim();
+    const skr = Date.now();
+    if (kata === mintaTerakhir && skr - mintaJam < 1200) return;
+    mintaTerakhir = kata; mintaJam = skr;
+    clearTimeout(jamCari);
+    q.blur();                       // papan ketik ditutup, hasilnya kelihatan penuh
+    jalankanCari();
+  };
   q.addEventListener('input', () => {
     $('#q-hapus').style.display = q.value ? 'block' : 'none';
-    clearTimeout(jamCari);
-    jamCari = setTimeout(jalankanCari, 260);
+    if (!q.value.trim() && S.qTerakhir) { clearTimeout(jamCari); jalankanCari(); }
   });
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); minta(); } });
+  q.addEventListener('change', minta);        // tombol "OK"/"buka" papan ketik HP
+  $('#q-cari').onclick = minta;
   $('#q-hapus').onclick = () => {
     q.value = ''; $('#q-hapus').style.display = 'none'; jalankanCari(); q.focus();
   };
@@ -550,26 +775,69 @@ function petunjukCari() {
       <span class="ar" style="font-size:16px">البيع</span> &middot; zakat &middot; hukum</div></div>`;
 }
 
+let sedangCari = false;
+let cariKotor = false;      // ada permintaan baru selagi yang lama masih jalan
+let sambungCari = null;     // keadaan untuk "tampilkan lebih banyak" (paginasi)
 async function jalankanCari() {
+  if (sedangCari) { cariKotor = true; return; }
+  sedangCari = true;
+  cariKotor = false;
+  try {
+    await jalankanCariSekali();
+  } finally {
+    sedangCari = false;
+  }
+  // ulangi kalau pengguna sempat mengetik ATAU mengganti saringan tadi
+  const skr = $('#q').value.trim();
+  if (cariKotor || skr !== S.qTerakhir) jalankanCari();
+}
+
+async function jalankanCariSekali() {
   const w = $('#hasil');
+  if (window.JEJAK) JEJAK('CARI mulai: "' + $('#q').value.trim() + '"');
   const q = $('#q').value.trim();
   S.qTerakhir = q;
+  simpanPosisi();
   S.sorot = q ? DB.kataKunci(q) : [];
   if (!q) { w.innerHTML = petunjukCari(); return; }
   w.innerHTML = `<div class="muat"><div class="puter"></div>mencari…</div>`;
 
   try {
     if (S.jenisCari === 'judul') return tampilJudul(await DB.cariJudul(q), q);
-    if (S.jenisCari === 'catatan' && S.kitabCari) { /* catatan tidak terikat kitab */ }
-    if (S.jenisCari === 'catatan') return tampilCatatanCari(await DB.catatanCari(q), q);
+    if (S.jenisCari === 'catatan') return tampilPunyaSaya(q);
 
     const t0 = performance.now();
-    const [jml, rows] = await Promise.all([
-      DB.hitungCari(q, S.frasa, null, S.kitabCari),
-      DB.cari(q, { frasa: S.frasa, kitabId: S.kitabCari, batas: 30 })
+    // Kalau kitabnya dibaca dari internet, tiap hasil berarti satu bolak-balik
+    // ke server. Ambil sedikit dulu supaya cepat muncul.
+    const dariInternet = !!(window.KONFIG && window.KONFIG.ALAMAT_DB);
+    const hasil = await Promise.race([
+      DB.cariLengkap(q, {
+        frasa: S.frasa, kitabId: S.kitabCari, batas: dariInternet ? 10 : 30
+      }),
+      new Promise((_, gagal) => setTimeout(
+        () => gagal(new Error('KELAMAAN')), dariInternet ? 30000 : 60000))
     ]);
+    const jml = hasil.jml, rows = hasil.rows;
     const ms = Math.round(performance.now() - t0);
+    if (window.JEJAK) JEJAK('CARI data siap: ' + jml + ' hasil, ' + rows.length + ' baris, ' +
+      rows.reduce((x, r) => x + (r.isi || '').length, 0) + ' huruf, ' + ms + ' md');
     if (q !== S.qTerakhir) return;
+
+    // dokumen milik sendiri dicari duluan, supaya tetap tampil
+    // walaupun di kitab kuning tidak ada yang cocok
+    let kartuMilik = '';
+    if (S.jenisCari === 'semua' && window.DOK) {
+      try {
+        const milik = await DOK.cari(q, 5);
+        if (milik.length) kartuMilik = milik.map(r => kartuDokumen(r, DB.kataKunci(q))).join('');
+      } catch (e) { console.warn('cari dokumen:', e); }
+    }
+
+    if (!rows.length && kartuMilik) {
+      w.innerHTML = `<div class="hitung">Tidak ada di kitab, tapi ada di
+        <b>dokumen milikmu</b></div>` + kartuMilik;
+      return;
+    }
 
     if (!rows.length) {
       w.innerHTML = `<div class="kosong">Tidak ketemu` +
@@ -586,15 +854,81 @@ async function jalankanCari() {
       ${S.kitabCari ? '&middot; hanya di <b class="ar">' + esc(S.namaKitabCari) + '</b>' : ''}
       ${Setel.data.abaikan ? '&middot; harakat diabaikan' : ''}
       ${S.frasa ? '&middot; frasa persis' : ''} &middot; ${ms} md</div>`;
-    h += rows.map(r => kartuHasil(r, kata)).join('');
-    if (jml > rows.length) {
-      h += `<div class="kosong" style="padding:16px;font-size:12px">
-        Menampilkan ${rows.length} teratas dari ${angka(jml)} paragraf.<br>
-        Persempit kata kunci untuk hasil yang lebih tepat.</div>`;
-    }
+    if (window.JEJAK) JEJAK('CARI mulai menggambar ' + rows.length + ' kartu');
+    // dokumen milik sendiri ditaruh paling atas — itu yang paling dicari pemiliknya
+    h += kartuMilik;
+    h += `<div id="cari-daftar">` + rows.map(r => kartuHasil(r, kata)).join('') + `</div>`;
+    h += `<div id="cari-lanjut"></div>`;
+    if (window.JEJAK) JEJAK('CARI kartu jadi, panjang html ' + h.length);
     w.innerHTML = h;
+
+    // siapkan "tampilkan lebih banyak" — semua hasil tetap bisa dibuka,
+    // dicicil sepuluh-sepuluh (atau tiga puluh dari HP) tanpa memberatkan.
+    if (hasil.lanjut != null) {
+      sambungCari = {
+        q, frasa: S.frasa, kitabId: S.kitabCari, kata, jml,
+        lewati: hasil.lanjut, sudah: rows.length,
+        batas: dariInternet ? 10 : 30, perkiraan: !!hasil.perkiraan
+      };
+      gambarTombolLanjut();
+    } else {
+      sambungCari = null;
+    }
+  if (window.JEJAK) JEJAK('CARI selesai tampil di layar');
+  if (window.JEJAK && DB.catatanIO) {
+    DB.catatanIO().then(c => {
+      if (c) JEJAK('IO: ' + c.ambil + ' potongan ' + c.blok + ' KB (' +
+        c.awet + ' dari simpanan), ' + c.baca + ' pembacaan');
+    });
+  }
   } catch (e) {
+    if (String(e.message || e) === 'KELAMAAN') {
+      if (window.JEJAK) JEJAK('CARI DIHENTIKAN karena kelamaan');
+      w.innerHTML = `<div class="kosong">Pencarian ini terlalu lama.<br><br>
+        Kata yang sangat umum harus menyisir sangat banyak halaman.
+        Coba kata yang lebih khas, atau batasi ke satu kitab lewat tombol
+        <b>▤ Semua kitab</b> di atas.</div>`;
+      return;
+    }
     w.innerHTML = `<div class="kosong">Ada yang salah: ${esc(String(e.message || e))}</div>`;
+  }
+}
+
+/* Tombol "tampilkan lebih banyak" di bawah daftar hasil. */
+function gambarTombolLanjut() {
+  const box = $('#cari-lanjut');
+  if (!box) return;
+  const s = sambungCari;
+  if (!s || s.lewati == null) { box.innerHTML = ''; return; }
+  // frasa/fan = jumlah pasti belum dihitung -> jangan tampilkan "sisa"
+  const sisa = s.perkiraan ? null : Math.max(0, s.jml - s.sudah);
+  box.innerHTML =
+    `<button class="muat-lagi" id="btn-muat-lagi">Tampilkan ${s.batas} lagi` +
+    (sisa != null ? ` &middot; sisa ${angka(sisa)}` : '') + `</button>` +
+    `<div class="lanjut-cat">${angka(s.sudah)} dari ${angka(s.jml)}${s.perkiraan ? '+' : ''} paragraf ditampilkan</div>`;
+  $('#btn-muat-lagi').onclick = muatLebihCari;
+}
+
+async function muatLebihCari() {
+  const s = sambungCari;
+  if (!s) return;
+  const btn = $('#btn-muat-lagi');
+  if (btn) { btn.disabled = true; btn.textContent = 'memuat…'; }
+  try {
+    const hasil = await DB.cariLengkap(s.q, {
+      frasa: s.frasa, kitabId: s.kitabId, batas: s.batas, lewati: s.lewati
+    });
+    // pencarian sudah berganti selagi menunggu -> buang hasil basi
+    if (s !== sambungCari || s.q !== S.qTerakhir) return;
+    const daftar = $('#cari-daftar');
+    if (daftar && hasil.rows.length)
+      daftar.insertAdjacentHTML('beforeend', hasil.rows.map(r => kartuHasil(r, s.kata)).join(''));
+    s.sudah += hasil.rows.length;
+    s.lewati = hasil.lanjut;
+    if (hasil.lanjut == null) sambungCari = null;
+    gambarTombolLanjut();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Coba lagi'; }
   }
 }
 
@@ -759,8 +1093,531 @@ async function bukaPemilihKitab() {
 }
 
 /* ============================================================
+   DOKUMEN MILIK SENDIRI
+   ============================================================ */
+async function tampilPunyaSaya(q) {
+  const w = $('#hasil');
+  const kata = DB.kataKunci(q);
+  let h = '';
+  try {
+    const dok = window.DOK ? await DOK.cari(q, 30) : [];
+    const cat = await DB.catatanCari(q);
+    if (!dok.length && !cat.length) {
+      w.innerHTML = `<div class="kosong">Tidak ada catatan atau dokumenmu
+        yang memuat kata itu.</div>`;
+      return;
+    }
+    h = `<div class="hitung">Ketemu <b>${dok.length}</b> dokumen
+         dan <b>${cat.length}</b> catatan</div>`;
+    h += dok.map(r => kartuDokumen(r, kata)).join('');
+    h += cat.map(c => `
+      <button class="baris" data-catatan="${c.id}">
+        <span class="lencana l-catatan">✎</span>
+        <span class="n"><span class="t">${esc(c.judul || 'Tanpa judul')}</span>
+          <span class="m">${esc((c.isi || '').slice(0, 90))}…</span></span>
+        <span style="color:var(--ink3)">›</span>
+      </button>`).join('');
+    w.innerHTML = h;
+  } catch (e) {
+    w.innerHTML = `<div class="kosong">Gagal: ${esc(String(e.message || e))}</div>`;
+  }
+}
+
+
+const IKON_DOK = { word: 'DOC', pdf: 'PDF', teks: 'TXT' };
+
+function rapiHuruf(n) {
+  if (n > 1000000) return (n / 1000000).toFixed(1) + ' juta huruf';
+  if (n > 1000) return Math.round(n / 1000) + ' rb huruf';
+  return n + ' huruf';
+}
+
+async function isiDaftarDokumen() {
+  const w = $('#daftar-dokumen');
+  if (!w) return;
+  try {
+    const d = await DOK.semua();
+    $('#jml-dokumen').textContent = d.length ? d.length + ' dokumen' : '';
+    if (!d.length) {
+      w.innerHTML = `<div class="kosong">Belum ada dokumen.<br>
+        Masukkan berkas Word, PDF, atau tempel teks — semuanya
+        ikut tercari bersama kitab kuning.</div>`;
+      return;
+    }
+    w.innerHTML = d.map(x => `
+      <button class="baris" data-dok="${x.id}">
+        <span class="lencana l-dok">${IKON_DOK[x.jenis] || 'DOC'}</span>
+        <span class="n">
+          <span class="t ${arab(x.judul) ? 'ar' : ''}">${esc(x.judul)}</span>
+          <span class="m">${rapiHuruf(x.huruf)}${x.halaman ? ' · ' + x.halaman + ' halaman' : ''}
+            <span class="titik"></span>${String(x.dibuat).slice(0, 10)}</span>
+        </span>
+        <span style="color:var(--ink3)">›</span>
+      </button>`).join('');
+  } catch (e) {
+    w.innerHTML = `<div class="kosong">Gagal membaca daftar dokumen: ${esc(String(e.message || e))}</div>`;
+  }
+}
+
+/* ------------------------------------------------------------
+   Peringatan sebelum memasukkan dokumen.
+   Orang biasanya mengira berkas yang dimasukkan ikut terbit untuk
+   semua orang. Jadi katakan dulu, sebelum berkasnya dipilih —
+   bukan sesudahnya, waktu sudah terlanjur.
+   ------------------------------------------------------------ */
+const KUNCI_INGAT = 'tleserisme23.ingat_pribadi';
+
+function ingatkanPribadi(lanjut, labelTombol) {
+  let diam = false;
+  try { diam = localStorage.getItem(KUNCI_INGAT) === '1'; } catch (e) { }
+  if (diam) { lanjut(); return; }
+
+  tirai('Sebelum dimasukkan, harap dibaca',
+    `<div style="font-size:13.5px;line-height:1.95;color:var(--ink2)">
+       <p style="margin:0 0 12px">Dokumen yang kamu masukkan
+         <b style="color:var(--gold)">tersimpan di perangkat ini saja</b>.</p>
+       <div style="background:var(--raise);border:1px solid var(--line2);
+            border-radius:12px;padding:12px 14px;margin-bottom:12px">
+         <div style="margin-bottom:7px">✓ Kamu sendiri yang bisa membacanya.</div>
+         <div style="margin-bottom:7px">✓ Ia ikut tercari bersama kitab kuning,
+           dan muncul di <b>Daftar kitab → Kitab punyaku</b>.</div>
+         <div style="margin-bottom:7px">✗ Pengguna lain
+           <b>tidak</b> bisa melihatnya — dokumenmu tidak dikirim ke mana pun.</div>
+         <div>✗ Ia <b>tidak</b> ikut pindah kalau kamu ganti HP, ganti peramban,
+           atau menghapus data peramban.</div>
+       </div>
+       <p style="margin:0 0 14px;color:var(--ink3);font-size:12.5px">
+         Jadi simpan tetap berkas aslinya. Ini salinan untuk dibaca dan dicari,
+         bukan tempat menyimpan satu-satunya.</p>
+       <label style="display:flex;gap:9px;align-items:center;font-size:12.5px;
+              color:var(--ink3);margin-bottom:14px;cursor:pointer">
+         <input type="checkbox" id="ingat-diam" style="width:16px;height:16px">
+         Saya sudah paham, jangan ingatkan lagi
+       </label>
+       <button class="tombol" id="ingat-lanjut">Saya mengerti, ${
+         esc(labelTombol || 'pilih berkas')}</button>
+     </div>`);
+  $('#ingat-lanjut').onclick = () => {
+    if ($('#ingat-diam').checked) {
+      try { localStorage.setItem(KUNCI_INGAT, '1'); } catch (e) { }
+    }
+    tutupTirai();
+    setTimeout(lanjut, 60);
+  };
+}
+
+async function imporBerkas(daftar) {
+  const w = $('#daftar-dokumen');
+  const lapor = (t) => {
+    if (w) w.innerHTML = `<div class="muat"><div class="puter"></div>${esc(t)}</div>`;
+  };
+  let berhasil = 0;
+  const gagal = [];
+  for (const b of daftar) {
+    try {
+      // satu berkas OpenITI bisa jadi beberapa dokumen (satu per juz)
+      const jadi = await DOK.masukkanBerkas(b, lapor);
+      berhasil += (jadi && jadi.length) || 1;
+    } catch (e) {
+      gagal.push((b.name || 'berkas') + ' — ' + (e.message || e));
+    }
+  }
+  await isiDaftarDokumen();
+  if (gagal.length) {
+    tirai('Sebagian tidak bisa dimasukkan',
+      `<p style="color:var(--ink2);font-size:13px;line-height:1.9">
+         Berhasil: <b>${berhasil}</b> dokumen.</p>` +
+      gagal.map(g => `<div class="baris" style="cursor:default">
+          <span class="lencana l-dok" style="background:rgba(224,100,74,.16);
+            color:#F0907A;border-color:rgba(224,100,74,.45)">!</span>
+          <span class="n"><span class="m" style="color:var(--ink2)">${esc(g)}</span></span>
+        </div>`).join(''));
+  } else if (berhasil) {
+    tirai('Selesai',
+      `<p style="color:var(--ink2);font-size:13.5px;line-height:1.9">
+        <b style="color:var(--gold)">${berhasil} dokumen</b> sudah masuk.
+        Ia langsung bisa dicari bersama kitab kuning, dan namanya muncul
+        di <b>Daftar kitab → Kitab punyaku</b>.<br><br>
+        Ingat: tersimpan di perangkat ini saja — tidak dikirim ke mana pun,
+        dan tidak terlihat oleh pengguna lain.</p>`);
+  }
+}
+
+function formTempelTeks() {
+  tirai('Tempel teks',
+    `<div class="cari-kotak" style="margin-bottom:10px">
+       <input id="dok-judul" placeholder="Judul, misal: Rumusan Bahtsul Kamis">
+     </div>
+     <textarea id="dok-isi" placeholder="Tempel teksnya di sini…"
+       style="width:100%;min-height:220px;background:var(--raise);color:var(--ink);
+       border:1px solid var(--line2);border-radius:12px;padding:12px;
+       font-size:14px;line-height:1.8;resize:vertical"></textarea>
+     <div style="height:10px"></div>
+     <button class="tombol" id="dok-simpan">Simpan</button>
+     <div class="pesan" id="dok-pesan" style="color:var(--bahaya);font-size:12.5px"></div>`);
+  $('#dok-simpan').onclick = async () => {
+    const j = $('#dok-judul').value.trim();
+    const i = $('#dok-isi').value.trim();
+    if (!i) { $('#dok-pesan').textContent = 'Teksnya masih kosong.'; return; }
+    try {
+      await DOK.simpanTeks(j || 'Teks tempelan', i, 'teks', 0);
+      tutupTirai();
+      await isiDaftarDokumen();
+    } catch (e) {
+      $('#dok-pesan').textContent = 'Gagal: ' + (e.message || e);
+    }
+  };
+  setTimeout(() => $('#dok-judul') && $('#dok-judul').focus(), 60);
+}
+
+/* Dokumen dibaca sekeping demi sekeping.
+   Dulu seluruh isi dokumen ditumpahkan sekaligus ke dalam halaman. Satu PDF
+   tiga juta huruf berarti tiga juta huruf teks + jutaan huruf HTML + puluhan
+   ribu elemen di layar sekali angkat — di HP itu berakhir dengan halaman
+   dibunuh lalu dimuat ulang sendiri. */
+async function bukaDokumen(id, sorot) {
+  tirai('Memuat…', `<div class="muat"><div class="puter"></div>membuka…</div>`);
+  try {
+    const d = await DOK.ambil(id);
+    if (!d) { $('#tirai-badan').innerHTML = `<div class="kosong">Dokumen tidak ada.</div>`; return; }
+    $('#tirai-judul').textContent = d.judul;
+    const kata = sorot && sorot.length ? sorot : (S.sorot || []);
+
+    $('#tirai-badan').innerHTML =
+      `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+         <button class="chip" id="dok-hapus">🗑 Hapus dokumen ini</button>
+         <span class="chip" style="cursor:default">${rapiHuruf(d.huruf)}</span>
+         ${d.keping > 1 ? `<span class="chip" style="cursor:default"
+             id="dok-bagian">bagian 1 dari ${d.keping}</span>` : ''}
+       </div>
+       <div class="dok-baca" id="dok-isi-baca"></div>
+       <div id="dok-lanjut-kotak"></div>`;
+
+    const badan = $('#dok-isi-baca');
+    let no = 0;
+
+    async function tampilkanKeping() {
+      const k = await DOK.keping(id, no);
+      if (!k) return;
+      // huruf depan yang terulang dari keping sebelumnya dipotong
+      const mentah = no === 0 ? k.teks : k.teks.slice(k.ulang || 0);
+      const bagian = document.createElement('div');
+      if (arab(mentah)) badan.classList.add('ar');
+      bagian.innerHTML = kata.length ? tandai(mentah, kata) : esc(mentah);
+      badan.appendChild(bagian);
+      no++;
+
+      const kotak = $('#dok-lanjut-kotak');
+      const nomor = $('#dok-bagian');
+      if (nomor) nomor.textContent = 'bagian ' + no + ' dari ' + d.keping;
+      if (no < (d.keping || 1)) {
+        kotak.innerHTML = `<button class="kt-lagi" id="dok-lanjut">
+          Lanjutkan bacaan — bagian ${no + 1} dari ${d.keping}</button>`;
+        $('#dok-lanjut').onclick = () => {
+          $('#dok-lanjut').textContent = 'memuat…';
+          tampilkanKeping();
+        };
+      } else {
+        kotak.innerHTML = d.keping > 1
+          ? `<div class="kosong" style="padding:14px;font-size:12px">— habis —</div>` : '';
+      }
+    }
+
+    await tampilkanKeping();
+
+    $('#dok-hapus').onclick = async () => {
+      if (!confirm('Hapus "' + d.judul + '" dari perangkat ini?')) return;
+      await DOK.hapus(id);
+      tutupTirai();
+      await isiDaftarDokumen();
+      if (S.layar === 'jelajah' && KAT.jenis === 'milik') gambarDaftarKitab();
+    };
+  } catch (e) {
+    $('#tirai-badan').innerHTML = `<div class="kosong">Gagal: ${esc(String(e.message || e))}</div>`;
+  }
+}
+
+function kartuDokumen(r, kata) {
+  const isAr = arab(r.isi);
+  const pos = cariPosisi(r.isi, kata);
+  let cup = potong(r.isi, pos, isAr ? 230 : 200);
+  cup = tandai(cup, kata);
+  return `<button class="hit milik" data-dok="${r.dokumen_id}">
+      <div class="src"><span class="${isAr ? 'kt' : ''}">${esc(r.judul)}</span>
+        <span class="loc">&middot; punya saya &middot; ${IKON_DOK[r.jenis] || 'DOC'}</span></div>
+      <div class="cup ${isAr ? 'ar' : ''}">…${cup}…</div>
+    </button>`;
+}
+
+/* ============================================================
+   DAFTAR KITAB — katalog perpustakaan
+   ------------------------------------------------------------
+   Pemisahnya BUKAN nama fan, tapi judulnya sendiri. Fan bernama
+   Arab seperti "المسائل المجموعات" ternyata isinya 1.091 berkas
+   rumusan berbahasa Indonesia — kalau dipisah per fan, seribu
+   dokumen itu akan menyamar jadi kitab.
+   ============================================================ */
+/* Hanya HURUF yang dihitung. Angka, kurung, dan titik sengaja diabaikan,
+   supaya judul seperti "الأم (108)" tidak ikut terlempar ke rak bahtsul
+   gara-gara tiga angka di belakangnya. */
+const HURUF_ARAB = /[ء-يٮٯٱ-ۓݐ-ݿ]/g;
+const HURUF_LATIN = /[A-Za-z]/g;
+
+function kadarArab(t) {
+  const s = String(t || '');
+  const a = (s.match(HURUF_ARAB) || []).length;
+  const l = (s.match(HURUF_LATIN) || []).length;
+  if (!a && !l) return 0;              // judul berisi angka saja → rak bahtsul
+  return a / (a + l);
+}
+
+function kunciJudul(j) {
+  return String(j || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+const KAT = {
+  siap: false,
+  kitab: [],
+  bahtsul: [],
+  jenis: 'kitab',
+  tampil: 0,
+  BATCH: 120,
+  LANGKAH: 400,      // baris kitab yang diangkat sekali jalan
+
+  async muat(paksa) {
+    if (this.siap && !paksa) return;
+    const w = $('#daftar-kitab');
+    w.innerHTML = `<div class="muat"><div class="puter"></div>menyusun daftar kitab…</div>`;
+
+    /* Sengaja TIDAK disimpan di localStorage. Daftarnya ±5.000 baris ≈ 1–2 MB,
+       sedangkan catatan, tanda, dan riwayat pengguna juga menumpang di sana;
+       kalau jatahnya habis, justru catatan pribadi yang gagal tersimpan.
+       Tabel kitab sendiri kecil, dan potongannya sudah tersimpan di Cache API,
+       jadi memuat ulang tetap cepat. */
+
+    /* Hemat ingatan: nama fan cuma 45 macam untuk ±4.800 baris, jadi
+       dipakai ulang satu untai yang sama. Dan judul yang cuma punya satu
+       berkas — hampir semuanya — tidak perlu bikin larik anggota sendiri. */
+    const namaFan = new Map();
+    const pakai = (s) => {
+      const t = s || '';
+      const ada = namaFan.get(t);
+      if (ada !== undefined) return ada;
+      namaFan.set(t, t);
+      return t;
+    };
+
+    /* Diambil BERTAHAP, bukan sekali tarik.
+       ------------------------------------------------------------------
+       Ini yang ketahuan dari catatan jejak di iPhone: begitu layar Jelajah
+       dibuka, pembacaan melonjak dari 15 ke 249 dalam satu denyut, dan
+       tak lama kemudian halamannya mati. Sebabnya satu kueri yang menyapu
+       seluruh tabel kitab sekaligus: ±4.800 baris dibentuk jadi obyek di
+       pekerja latar, disalin utuh melewati batas pesan, lalu dibentuk
+       ulang jadi obyek di halaman. Tiga tumpukan besar hidup berbarengan,
+       padahal yang akhirnya disimpan cuma ringkasannya.
+       Sekarang 400 baris sekali jalan, langsung diringkas, lalu dilepas —
+       yang menumpuk cuma ringkasannya. */
+    const LANGKAH = this.LANGKAH;
+    const kitab = new Map(), bahtsul = new Map();
+    let batas = 0, jml = 0;
+
+    for (;;) {
+      const baris = await DB.tanya(
+        `SELECT id i, judul j, fan_nama f, jml_halaman h FROM kitab
+         WHERE id > ? ORDER BY id LIMIT ?`, [batas, LANGKAH]);
+      if (!baris.length) break;
+      batas = baris[baris.length - 1].i;
+      jml += baris.length;
+
+      for (const r of baris) {
+        const j = String(r.j || '').trim();
+        if (!j) continue;
+        if (j.startsWith('~$')) continue;          // berkas autosave Word, bukan dokumen
+        const rak = kadarArab(j) > 0.5 ? kitab : bahtsul;
+        const k = kunciJudul(j);
+        const f = pakai(r.f), h = r.h || 0;
+        let g = rak.get(k);
+        if (!g) { rak.set(k, { j, h, i: r.i, f, n: 1 }); continue; }
+        if (g.n === 1) g.anggota = [{ i: g.i, f: g.f, h: g.h }];
+        g.anggota.push({ i: r.i, f, h });
+        g.n++;
+        if (h > g.h) g.h = h;
+      }
+      const habis = baris.length < LANGKAH;
+      baris.length = 0;                            // lepaskan sebelum ambil lagi
+      w.innerHTML = `<div class="muat"><div class="puter"></div>
+        menyusun daftar kitab… ${angka(jml)}</div>`;
+      if (habis) break;
+      // beri napas sejenak supaya pemulung ingatan sempat bekerja
+      await new Promise(r => setTimeout(r, 0));
+    }
+
+    const urut = (m) => Array.from(m.values())
+      .sort((a, b) => a.j.localeCompare(b.j, 'ar'));
+    this.kitab = urut(kitab);
+    this.bahtsul = urut(bahtsul);
+    this.siap = true;
+  },
+
+  saring(q) {
+    const n = DB.seragam(q || '').trim();
+    const asal = this.jenis === 'bahtsul' ? this.bahtsul : this.kitab;
+    if (!n) return asal;
+    return asal.filter(x => DB.seragam(x.j).indexOf(n) >= 0);
+  },
+
+  /* Daftar ini ±3.500 baris dan tetap menempel di ingatan selama aplikasi
+     hidup, padahal cuma dipakai di satu layar. Di HP, beban tetap seperti itu
+     yang bikin halaman jadi sasaran empuk waktu HP-nya butuh ingatan. Jadi
+     dilepas begitu ditinggalkan — menyusunnya ulang cuma perlu sepersekian
+     detik, karena potongannya sudah ada di simpanan awet. */
+  lepas() {
+    if (!this.siap) return;
+    this.kitab = [];
+    this.bahtsul = [];
+    this.siap = false;
+    this.tampil = 0;
+  }
+};
+
+function barisKitab(g, tanda, warna) {
+  const banyak = g.n > 1;
+  const i = banyak ? g.anggota[0].i : g.i;
+  const f = banyak ? g.anggota[0].f : g.f;
+  return `<button class="kt-baris" data-kt="${i}"
+      ${banyak ? 'data-grup="' + esc(kunciJudul(g.j)) + '"' : ''}>
+      <span class="tanda ${warna}">${tanda}</span>
+      <span class="nm">
+        <span class="j ${arab(g.j) ? 'ar' : ''}">${esc(g.j)}</span>
+        <span class="k ${arab(f) ? 'ar' : ''}">${esc(f)}${
+          banyak ? ' &middot; ' + g.n + ' berkas' : ''}</span>
+      </span>
+      <span class="jml">${angka(g.h)} hal</span>
+    </button>`;
+}
+
+async function gambarDaftarKitab(tambah) {
+  const w = $('#daftar-kitab');
+  const q = ($('#q-fan') || {}).value || '';
+
+  if (KAT.jenis === 'milik') return gambarKitabMilik(q);
+
+  const hasil = KAT.saring(q);
+  if (!tambah) KAT.tampil = 0;
+  KAT.tampil = Math.min(hasil.length, KAT.tampil + KAT.BATCH);
+
+  if (!hasil.length) {
+    w.innerHTML = q.trim()
+      ? `<div class="kosong">Tidak ada yang cocok dengan
+          "<b>${esc(q)}</b>" di daftar ini.</div>`
+      : `<div class="kosong">Daftar ini masih kosong.</div>`;
+    return;
+  }
+
+  const tanda = KAT.jenis === 'bahtsul' ? 'BM' : 'كتاب';
+  const warna = KAT.jenis === 'bahtsul' ? 'l-bahtsul' : 'l-fikih';
+  let h = `<div class="kt-kepala">Menampilkan <b>${angka(KAT.tampil)}</b>
+    dari <b>${angka(hasil.length)}</b>
+    ${KAT.jenis === 'bahtsul' ? 'dokumen bahtsul' : 'kitab'}${q ? ' yang cocok' : ''}</div>`;
+  h += hasil.slice(0, KAT.tampil).map(g => barisKitab(g, tanda, warna)).join('');
+  if (KAT.tampil < hasil.length) {
+    h += `<button class="kt-lagi" id="kt-lagi">Tampilkan ${
+      Math.min(KAT.BATCH, hasil.length - KAT.tampil)} lagi</button>`;
+  }
+  w.innerHTML = h;
+  const lagi = $('#kt-lagi');
+  if (lagi) lagi.onclick = () => gambarDaftarKitab(true);
+}
+
+async function gambarKitabMilik(q) {
+  const w = $('#daftar-kitab');
+  if (!window.DOK) { w.innerHTML = `<div class="kosong">Belum siap.</div>`; return; }
+  const d = await DOK.semua();
+  const n = String(q || '').toLowerCase().trim();
+  const pilih = n ? d.filter(x => String(x.judul).toLowerCase().indexOf(n) >= 0) : d;
+  if (!pilih.length) {
+    w.innerHTML = `<div class="kosong">Belum ada kitab yang kamu masukkan sendiri.<br><br>
+      Buka <b>Koleksi</b> lalu tekan <b>Masukkan dokumen</b> —
+      berkas Word atau PDF apa pun bisa jadi kitabmu sendiri di sini.</div>`;
+    return;
+  }
+  w.innerHTML = `<div class="kt-kepala">Ada <b>${pilih.length}</b> kitab milikmu sendiri
+      &middot; tersimpan di perangkat ini saja</div>` +
+    pilih.map(x => `
+      <button class="kt-baris" data-dok="${x.id}">
+        <span class="tanda l-dok">${IKON_DOK[x.jenis] || 'DOC'}</span>
+        <span class="nm">
+          <span class="j ${arab(x.judul) ? 'ar' : ''}">${esc(x.judul)}</span>
+          <span class="k">punyaku &middot; ${String(x.dibuat).slice(0, 10)}</span>
+        </span>
+        <span class="jml">${x.halaman ? angka(x.halaman) + ' hal' : rapiHuruf(x.huruf)}</span>
+      </button>`).join('');
+}
+
+/** kalau satu judul dipakai beberapa berkas, tampilkan anggotanya */
+async function bukaGrupKitab(kunci) {
+  const asal = KAT.jenis === 'bahtsul' ? KAT.bahtsul : KAT.kitab;
+  const g = asal.find(x => kunciJudul(x.j) === kunci);
+  if (!g || !g.anggota) return;
+  tirai(g.j, `<p style="color:var(--ink2);font-size:12.5px;margin:0 0 12px">
+      Ada <b style="color:var(--gold)">${g.n} berkas</b> dengan judul sama,
+      dari folder yang berbeda. Pilih salah satu:</p>` +
+    g.anggota.map((x, n) => `
+      <button class="kt-baris" data-buka="${x.i}" data-urut="1">
+        <span class="tanda l-fikih">${n + 1}</span>
+        <span class="nm"><span class="j" style="font-size:13px">${esc(x.f || '(tanpa fan)')}</span></span>
+        <span class="jml">${angka(x.h)} hal</span>
+      </button>`).join(''));
+}
+
+/* ============================================================
    JELAJAH
    ============================================================ */
+
+/** dipanggil setiap kali layar Jelajah dibuka atau chip diganti */
+async function gambarJelajah() {
+  const perFan = KAT.jenis === 'fan';
+  $('#pohon').style.display = perFan ? '' : 'none';
+  $('#daftar-kitab').style.display = perFan ? 'none' : '';
+  if (perFan) { await isiPohon(); saringPohon(); return; }
+  if (KAT.jenis !== 'milik') {
+    try { await KAT.muat(); nomorChip(); }
+    catch (e) {
+      $('#daftar-kitab').innerHTML =
+        `<div class="kosong">Gagal menyusun daftar: ${esc(String(e.message || e))}</div>`;
+      return;
+    }
+  }
+  await gambarDaftarKitab();
+}
+
+/** tempelkan jumlahnya di chip, supaya pertanyaan "isinya apa saja"
+    sudah separuh terjawab sebelum orang menggulir */
+function nomorChip() {
+  if (!KAT.siap) return;
+  const set = (jenis, teks) => {
+    const c = $(`#pilih-daftar .chip[data-daftar="${jenis}"]`);
+    if (c) c.textContent = teks;
+  };
+  set('kitab', 'Kitab · ' + angka(KAT.kitab.length));
+  set('bahtsul', 'Bahtsul Masail · ' + angka(KAT.bahtsul.length));
+}
+
+/** kotak ketik — arahkan ke daftar kitab atau ke pohon fan */
+function saringJelajah() {
+  if (KAT.jenis === 'fan') saringPohon();
+  else gambarDaftarKitab();
+}
+
+function saringPohon() {
+  const v = DB.seragam(($('#q-fan').value || '').trim());
+  $$('#pohon .simpul').forEach(s => {
+    const nm = DB.seragam(s.querySelector('.nm').textContent);
+    s.style.display = (!v || nm.indexOf(v) >= 0) ? '' : 'none';
+  });
+}
+
 let fanTermuat = false;
 async function isiPohon(paksa) {
   if (fanTermuat && !paksa) return;
@@ -809,6 +1666,7 @@ async function bukaKitab(kitabId, urut) {
     S.halaman = h;
     gambarBaca();
     DB.riwayatSimpan(kitabId, h ? h.urut : 1).catch(() => { });
+    simpanPosisi();
   } catch (e) {
     $('#nass').innerHTML = `<div class="kosong">Gagal membuka: ${esc(String(e))}</div>`;
   }
@@ -830,19 +1688,56 @@ function gambarBaca() {
     `juz ${h.juz} <span class="titik"></span> halaman ${h.hal}
      <span class="titik"></span> ${angka(k.jml_halaman)} halaman`;
 
-  let t = (S.sorot && S.sorot.length)
-    ? tandai(h.isi, S.sorot)
-    : esc(h.isi).replace(/&lt;ص:\s*(\d+)&gt;/g, '<span class="tanda-hal">ص $1</span>');
-  if (!Setel.data.harakat) t = t.replace(/[ً-ْٰ]/g, '');
   const el = $('#nass');
-  el.innerHTML = t;
+  el.innerHTML = '';
   el.classList.toggle('latin', !arab(h.isi));
+  S.tampilSampai = 0;
+  tambahBagianHalaman();
 
   const persen = k.jml_halaman ? Math.min(100, h.urut / k.jml_halaman * 100) : 0;
   $('#p-bar').style.width = Math.max(1, persen) + '%';
   $('#p-pos').textContent = h.hal + ' / ' + angka(k.jml_halaman);
   DB.tandaAda(k.id, h.urut).then(a => $('#a-tanda').classList.toggle('on', a));
   $('#isi').scrollTop = 0;
+}
+
+/* Sebagian "halaman" di Syamilah sebenarnya satu bab utuh — bisa ratusan ribu
+   huruf. Menumpahkannya sekaligus berarti teksnya, salinan HTML-nya, dan puluhan
+   ribu elemen layar sekali angkat; di HP halamannya keburu dibunuh. Jadi
+   ditampilkan sepotong-sepotong, dengan tombol lanjut kalau memang sepanjang itu. */
+const BATAS_TAMPIL = 60000;
+
+function tambahBagianHalaman() {
+  const h = S.halaman;
+  if (!h) return;
+  const el = $('#nass');
+  const a = S.tampilSampai || 0;
+  const b = Math.min(h.isi.length, a + BATAS_TAMPIL);
+  if (a >= b && a > 0) return;
+
+  let t = (S.sorot && S.sorot.length)
+    ? tandai(h.isi.slice(a, b), S.sorot)
+    : esc(h.isi.slice(a, b)).replace(/&lt;ص:\s*(\d+)&gt;/g, '<span class="tanda-hal">ص $1</span>');
+  if (!Setel.data.harakat) t = t.replace(/[ً-ْٰ]/g, '');
+  if (window.JEJAK) JEJAK('BACA menggambar ' + t.length + ' huruf html (dari ' + a + ')');
+
+  const lama = $('#nass-lanjut');
+  if (lama) lama.remove();
+  const bagian = document.createElement('div');
+  bagian.innerHTML = t;
+  el.appendChild(bagian);
+  S.tampilSampai = b;
+
+  if (b < h.isi.length) {
+    const tb = document.createElement('button');
+    tb.className = 'kt-lagi';
+    tb.id = 'nass-lanjut';
+    tb.textContent = 'Lanjutkan halaman ini — ' +
+      angka(Math.round((h.isi.length - b) / 1000)) + ' rb huruf lagi';
+    tb.onclick = tambahBagianHalaman;
+    el.appendChild(tb);
+  }
+  if (window.JEJAK) JEJAK('BACA selesai tampil');
 }
 
 async function lompat(arah) {
@@ -852,6 +1747,7 @@ async function lompat(arah) {
   S.halaman = h;
   gambarBaca();
   DB.riwayatSimpan(S.kitab.id, h.urut).catch(() => { });
+  simpanPosisi();
 }
 
 async function bukaDaftarIsi() {
@@ -948,6 +1844,71 @@ async function isiAtur() {
         <div class="s">${DB.mode === 'android' ? 'SQLite bawaan HP' : DB.mode === 'lokal' ? 'dibaca langsung dari harddisk' : 'peramban (uji coba)'}
         &middot; teks dimampatkan</div></div></div>`;
   } catch (e) { }
+
+  const v = $('#v-jejak');
+  if (v && window.JEJAK_BACA) {
+    v.textContent = '…';
+    JEJAK_BACA().then(t => {
+      const mati = (t.match(/HALAMAN DIBUKA/g) || []).length;
+      v.textContent = t ? (mati > 1 ? mati + '× dibuka' : 'ada') : 'kosong';
+      v.style.color = mati > 2 ? 'var(--ok)' : mati > 1 ? 'var(--gold)' : 'var(--ink3)';
+    }, () => { v.textContent = '—'; });
+  }
+}
+
+/* ------------------------------------------------------------
+   Catatan jejak — dibaca dari dalam aplikasi, bukan dari server.
+   Tiap kali halaman mati lalu hidup lagi, muncul garis
+   "HALAMAN DIBUKA" baru. Baris tepat SEBELUM garis itulah yang
+   memberi tahu apa yang sedang berjalan waktu halamannya mati.
+   ------------------------------------------------------------ */
+async function bukaCatatanJejak() {
+  tirai('Catatan jejak', `<div class="muat"><div class="puter"></div>membaca catatan…</div>`);
+  const t = window.JEJAK_BACA ? await JEJAK_BACA() : '';
+  if (!t) {
+    tirai('Catatan jejak', `<div class="kosong">Belum ada catatan.<br><br>
+      Perekamnya baru mulai mencatat sejak berkas ini terpasang.
+      Coba pakai aplikasinya sebentar, lalu buka lagi halaman ini.</div>`);
+    return;
+  }
+  const mati = (t.match(/HALAMAN DIBUKA/g) || []).length;
+  tirai('Catatan jejak',
+    `<div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+       <button class="chip" id="jejak-salin">⧉ Salin semua</button>
+       <button class="chip" id="jejak-hapus">🗑 Kosongkan</button>
+       <span class="chip" style="cursor:default">${mati}× halaman dibuka</span>
+       <span class="chip" style="cursor:default">${angka(t.length)} huruf</span>
+     </div>
+     <div style="color:var(--ink3);font-size:11.5px;line-height:1.8;margin-bottom:10px">
+       Tekan <b>Salin semua</b>, lalu tempel ke percakapan. Tidak perlu difoto.
+     </div>
+     <pre id="jejak-isi" style="background:var(--raise);border:1px solid var(--line2);
+       border-radius:12px;padding:11px;font-size:10.5px;line-height:1.7;
+       white-space:pre-wrap;word-break:break-word;margin:0;
+       max-height:52vh;overflow:auto;direction:ltr;text-align:left"></pre>`);
+  $('#jejak-isi').textContent = t;
+  $('#jejak-isi').scrollTop = $('#jejak-isi').scrollHeight;
+
+  $('#jejak-salin').onclick = async function () {
+    const tombol = this;
+    const beres = (ok) => {
+      tombol.textContent = ok ? '✓ Tersalin, tinggal ditempel' : 'Gagal — sorot manual';
+      setTimeout(() => { tombol.textContent = '⧉ Salin semua'; }, 2500);
+    };
+    try { await navigator.clipboard.writeText(t); beres(true); }
+    catch (e) {
+      const a = document.createElement('textarea');
+      a.value = t; document.body.appendChild(a); a.select();
+      try { beres(document.execCommand('copy')); } catch (x) { beres(false); }
+      document.body.removeChild(a);
+    }
+  };
+  $('#jejak-hapus').onclick = async () => {
+    if (!confirm('Kosongkan catatan jejak?')) return;
+    if (window.JEJAK_HAPUS) await JEJAK_HAPUS();
+    tutupTirai();
+    isiAtur();
+  };
 }
 
 /* ============================================================
@@ -983,12 +1944,22 @@ function pasangKendali() {
 
   // klik menyebar
   document.addEventListener('click', ev => {
+    const grup = ev.target.closest('[data-grup]');
+    if (grup) { bukaGrupKitab(grup.dataset.grup); return; }
+    const kt = ev.target.closest('[data-kt]');
+    if (kt) { bukaKitab(+kt.dataset.kt, 1); return; }
     const buka = ev.target.closest('[data-buka]');
-    if (buka) { bukaKitab(+buka.dataset.buka, +(buka.dataset.urut || 1)); return; }
+    if (buka) {
+      if ($('#tirai').classList.contains('on')) tutupTirai();
+      bukaKitab(+buka.dataset.buka, +(buka.dataset.urut || 1));
+      return;
+    }
     const pg = ev.target.closest('[data-pergi]');
     if (pg && !pg.classList.contains('nv')) { pergi(pg.dataset.pergi); return; }
     const simpul = ev.target.closest('.simpul > .hd');
     if (simpul) { bukaFan(simpul.parentNode); return; }
+    const dk = ev.target.closest('[data-dok]');
+    if (dk) { bukaDokumen(+dk.dataset.dok); return; }
     const cat = ev.target.closest('[data-catatan]');
     if (cat) {
       DB.catatanSemua().then(l => {
@@ -1006,12 +1977,26 @@ function pasangKendali() {
     }
   });
 
+  /* Balik ke aplikasi di layar Cari -> panaskan mesin lagi diam-diam,
+     supaya pencarian berikutnya tidak dingin. Sengaja hanya di layar Cari:
+     di layar Baca pekerja memang dibiarkan tidur demi menghemat ingatan. */
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && S.layar === 'cari' && window.DB && DB.prapanas) DB.prapanas();
+  });
+
   $('#tirai').onclick = e => { if (e.target.id === 'tirai') tutupTirai(); };
   $('#tirai-tutup').onclick = tutupTirai;
 
   $('#p-maju').onclick = () => lompat(1);
   $('#p-mundur').onclick = () => lompat(-1);
   $('#a-isi').onclick = bukaDaftarIsi;
+  $('#btn-impor').onclick = () => ingatkanPribadi(() => $('#berkas-dokumen').click());
+  $('#berkas-dokumen').onchange = function () {
+    const f = Array.from(this.files || []);
+    this.value = '';
+    if (f.length) imporBerkas(f);
+  };
+  $('#btn-tempel').onclick = () => ingatkanPribadi(formTempelTeks, 'lanjut tempel teks');
   $('#tg-kitab').onclick = () => {
     if (S.kitabCari) { pakaiKitabCari(null, ''); return; }   // ✕ = lepas batasan
     bukaPemilihKitab();
@@ -1052,6 +2037,19 @@ function pasangKendali() {
     Setel.data.harakat = !Setel.data.harakat; Setel.simpan(); isiAtur();
     $('#a-harakat').classList.toggle('on', Setel.data.harakat);
   };
+  /* Posisi guliran ikut dicatat sambil dibaca — dijarangkan supaya menulisnya
+     tidak ikut membebani. Tanpa ini, halaman yang mati akan kembali ke
+     paragraf pertama, dan itu yang paling terasa waktu sedang serius membaca. */
+  let jamGulir = null;
+  const kotakIsi = $('#isi');
+  if (kotakIsi) {
+    kotakIsi.addEventListener('scroll', () => {
+      if (jamGulir) return;
+      jamGulir = setTimeout(() => { jamGulir = null; simpanPosisi(); }, 700);
+    }, { passive: true });
+  }
+
+  $('#s-jejak').onclick = bukaCatatanJejak;
   $('#s-tema').onclick = () => { Setel.data.terang = !Setel.data.terang; Setel.simpan(); isiAtur(); };
   $('#s-abaikan').onclick = () => { Setel.data.abaikan = !Setel.data.abaikan; Setel.simpan(); isiAtur(); };
   $('#s-hamzah').onclick = () => { Setel.data.hamzah = !Setel.data.hamzah; Setel.simpan(); isiAtur(); };
@@ -1060,12 +2058,28 @@ function pasangKendali() {
     Setel.simpan(); isiAtur();
   };
 
+  /* --- kotak ketik di Jelajah: menyaring daftar kitab, atau pohon fan --- */
+  let jedaKetik = null;
   $('#q-fan').addEventListener('input', function () {
-    const v = DB.seragam(this.value.trim());
-    $$('#pohon .simpul').forEach(s => {
-      const nm = DB.seragam(s.querySelector('.nm').textContent);
-      s.style.display = (!v || nm.indexOf(v) >= 0) ? '' : 'none';
-    });
+    $('#q-fan-hapus').style.display = this.value ? '' : 'none';
+    clearTimeout(jedaKetik);
+    jedaKetik = setTimeout(saringJelajah, 140);
+  });
+  $('#q-fan-hapus').onclick = () => {
+    $('#q-fan').value = '';
+    $('#q-fan-hapus').style.display = 'none';
+    saringJelajah();
+  };
+
+  /* --- pilih daftar: Kitab / Bahtsul / Punyaku / Per fan --- */
+  $$('#pilih-daftar .chip').forEach(c => {
+    c.onclick = () => {
+      $$('#pilih-daftar .chip').forEach(x => x.classList.toggle('on', x === c));
+      KAT.jenis = c.dataset.daftar;
+      $('#q-fan').placeholder = KAT.jenis === 'fan'
+        ? 'Ketik nama fan…' : 'Ketik nama kitab…';
+      gambarJelajah();
+    };
   });
 
   // tombol kembali Android
