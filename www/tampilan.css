@@ -7,7 +7,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap');
 
-:root{ --h:150; --h2:174; }
+:root{ --h:150; --h2:174; --tinggi-ar:2.1; }   /* spasi baris Arab dirapetin dikit dari 2.35 -> lebih padat "kitab" */
 
 /* ---------- PALET GELAP (bawaan) ---------- */
 :root{
@@ -184,8 +184,18 @@ body.terang mark{background:hsla(var(--h) 60% 62% / .32) !important;color:var(--
 /* render \n\n dari database jadi ENTER antar-paragraf (biar nggak nyambung
    satu blok, matan & syarah kepisah rapi seperti di Maktabah) */
 #nass{ white-space:pre-wrap; }
-#nass .tl-matan{ color:var(--gold); font-weight:700; unicode-bidi:isolate; }
-body.terang #nass .tl-matan{ color:var(--goldc); }
+
+/* 1) KOLOM SEMPIT ala halaman kitab. Di desktop teks nggak melar edge-to-edge
+      (itu biang utama capek baca: mata jauh balik ke awal baris). Di HP layarnya
+      udah sempit, jadi max-width ini cuma "gigit" di layar lebar. Header, alat,
+      & pager ikut ditengahin biar jadi satu kolom rapi. */
+#nass, #baca-kepala, .alat, .pager{ max-width:700px; margin-inline:auto; }
+
+/* 2) MATAN nonjol lewat BOBOT + kontras (bukan cuma warna, biar kerasa mana
+      matan mana syarah). Tanda kurung ( ) dibuang dari tampilan (di tampilan.js)
+      dan diganti tebal ala Turots — sekalian ngeberesin bug arah kurung di RTL. */
+#nass .tl-matan{ color:var(--gold2); font-weight:800; unicode-bidi:isolate; }
+body.terang #nass .tl-matan{ color:var(--goldc); font-weight:800; }
 
 @media (prefers-reduced-motion:reduce){
   .tl-seal-wrap,.tl-halo,.tl-ring-o,.tl-ring-i,.tl-spark,.tl-word::after,

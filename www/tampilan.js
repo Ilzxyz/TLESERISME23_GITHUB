@@ -146,7 +146,7 @@
   }
 
   /* ---- bungkus "( ... )" jadi span.tl-matan supaya matan beda warna ---- */
-  var RE_MATAN = /\([^()\n]{1,600}?\)/g;
+  var RE_MATAN = /\(([^()\n]{1,600}?)\)/g;   // grup 1 = isi di dalam kurung
   function warnaiNode(root) {
     if (!root) return;
     var jalan = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
@@ -163,7 +163,9 @@
         ada = true;
         if (m.index > last) frag.appendChild(document.createTextNode(s.slice(last, m.index)));
         var sp = document.createElement('span');
-        sp.className = 'tl-matan'; sp.textContent = m[0];
+        // buang tanda kurung + spasi pinggirnya -> matan bersih & tebal (ala Turots).
+        // ini sekalian ngilangin bug arah "( )" di teks RTL yang bikin kurung kebalik.
+        sp.className = 'tl-matan'; sp.textContent = m[1].trim();
         frag.appendChild(sp);
         last = m.index + m[0].length;
       }
