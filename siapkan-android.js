@@ -6,7 +6,7 @@ const path = require('path');
 const sharp = require('sharp');
 
 const RES = 'android/app/src/main/res';
-const LOGO = 'www/ikon/logo.png';
+const LOGO = 'www/ikon/logo-mark.png';   // emblem/seal baru (622x622), bukan logo lama yg memanjang
 const BG = { r: 10, g: 21, b: 54, alpha: 1 };
 
 const UKURAN = { mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
