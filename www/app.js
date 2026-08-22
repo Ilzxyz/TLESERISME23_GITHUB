@@ -2049,7 +2049,6 @@ function pasangKendali() {
     }, { passive: true });
   }
 
-  $('#s-jejak').onclick = bukaCatatanJejak;
   $('#s-tema').onclick = () => { Setel.data.terang = !Setel.data.terang; Setel.simpan(); isiAtur(); };
   $('#s-abaikan').onclick = () => { Setel.data.abaikan = !Setel.data.abaikan; Setel.simpan(); isiAtur(); };
   $('#s-hamzah').onclick = () => { Setel.data.hamzah = !Setel.data.hamzah; Setel.simpan(); isiAtur(); };
