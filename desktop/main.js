@@ -193,6 +193,7 @@ function buatJendela() {
     backgroundColor: '#0C1524',
     title: 'TLeserisme23',
     icon: ikonJendela(),
+    autoHideMenuBar: true,     // menu bar disembunyikan; tekan Alt untuk memunculkan sesaat
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
