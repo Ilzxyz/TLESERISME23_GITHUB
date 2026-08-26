@@ -1,0 +1,63 @@
+name: Bangun Windows TLeserisme23
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bangun:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Siapkan Node 20
+        uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Pasang paket
+        run: npm install --no-audit --no-fund
+
+      - name: Bikin ikon .ico
+        run: node desktop/bikin-ikon.js
+
+      - name: Bangun portable + installer
+        run: npx electron-builder --win --x64 --publish never
+
+      - name: Daftar hasil
+        run: dir keluaran
+        shell: cmd
+
+      - name: Unggah artefak
+        uses: actions/upload-artifact@v4
+        with:
+          name: TLeserisme23-Windows
+          path: keluaran/*.exe
+          retention-days: 90
+
+      - name: Terbitkan
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: win-v1.0.${{ github.run_number }}
+          name: TLeserisme23 Windows v1.0.${{ github.run_number }}
+          body: |
+            TLeserisme23 — Perpustakaan Digital Fikih & Bahtsul Masail.
+            Versi **Windows**, berjalan penuh tanpa internet.
+
+            **Pilih salah satu**
+            - `TLeserisme23-Portable-*.exe` — tanpa pemasangan, tinggal dobel-klik.
+            - `TLeserisme23-Setup-*.exe` — installer (pintasan Start Menu & desktop).
+
+            **Cara pakai**
+            1. Unduh aplikasinya (salah satu di atas).
+            2. Taruh berkas `tleserisme.db` di folder yang sama dengan aplikasi
+               (untuk versi portable) — atau jalankan aplikasi lalu tunjuk lokasi
+               `tleserisme.db` saat diminta.
+            3. Buka aplikasi. Semua kitab langsung bisa dicari, tanpa internet.
+
+            _Windows 10/11 (64-bit). Kalau muncul peringatan SmartScreen saat
+            pertama dibuka: klik "Info selengkapnya" lalu "Tetap jalankan"._
+          files: keluaran/*.exe

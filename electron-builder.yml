@@ -1,0 +1,48 @@
+# ============================================================
+# TLeserisme23 — konfigurasi pengemas Windows (electron-builder)
+# Menghasilkan: portable .exe (tanpa install) + installer (Setup.exe)
+# Berkas tleserisme.db TIDAK dibundel — tetap terpisah, ditaruh
+# pengguna di sebelah aplikasi.
+# ============================================================
+
+appId: id.tleserisme23.desktop
+productName: TLeserisme23
+
+directories:
+  output: keluaran        # sudah masuk .gitignore
+  buildResources: build
+
+# Hanya yang perlu ikut ke dalam aplikasi. www/ dan cangkang desktop/.
+files:
+  - desktop/**/*
+  - www/**/*
+  - package.json
+  - "!**/*.map"
+  - "!**/*.md"
+
+# Berkas web dibaca dari dalam paket lewat server internal, jadi asar aman.
+asar: true
+
+win:
+  target:
+    - target: portable
+      arch: [x64]
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  # tak ada tanda tangan kode — wajar untuk sebar mandiri (flashdisk/WA).
+  # Pengguna mungkin melihat peringatan SmartScreen sekali; klik "Info lebih
+  # lanjut" -> "Tetap jalankan".
+
+portable:
+  artifactName: TLeserisme23-Portable-${version}.exe
+
+nsis:
+  oneClick: false
+  perMachine: false                      # bisa dipasang tanpa hak admin
+  allowToChangeInstallationDirectory: true
+  allowElevation: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: TLeserisme23
+  artifactName: TLeserisme23-Setup-${version}.exe

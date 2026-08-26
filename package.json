@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "description": "TLeserisme23 - Perpustakaan Digital Fikih & Bahtsul Masail",
+  "main": "desktop/main.js",
   "scripts": {
     "sync": "cap sync android",
-    "buka": "cap open android"
+    "buka": "cap open android",
+    "mulai": "electron .",
+    "ikon": "node desktop/bikin-ikon.js",
+    "bangun-win": "node desktop/bikin-ikon.js && electron-builder --win --x64"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^7.0.3",
@@ -18,6 +22,9 @@
     "sql.js": "^1.14.1"
   },
   "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0",
+    "png-to-ico": "^2.1.8",
     "sharp": "^0.33.0"
   }
 }
