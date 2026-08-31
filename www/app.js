@@ -54,7 +54,7 @@ async function mulai() {
       await DB.bukaAndroid();
       await lanjutJalan();
     } catch (e) {
-      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) tampilPasang();
+      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) { tampilPasang(); siapPasangAndroid(); }
       else tampilPasang('Gagal membuka basis data: ' + (e.message || e));
     }
   } else {
@@ -106,6 +106,7 @@ function layarChrome(isi, tombol) {
   $('#btn-cari-sendiri').style.display = 'none';
   $('#btn-periksa').style.display = 'none';
   $('#btn-ulang').style.display = 'none';
+  const u = $('#btn-unduh'); if (u) u.style.display = 'none';
   const c = $('#btn-contoh');
   c.style.display = 'block';
   c.onclick = pakaiContoh;
@@ -634,6 +635,172 @@ async function pakaiBerkasPilihan(berkas) {
     await pasangkanDanBuka();
   } catch (e) {
     tanganiGagalPasang(e);
+  }
+}
+
+/* ============================================================
+   UNDUH BASIS DATA LANGSUNG DARI INTERNET (Android)
+   ------------------------------------------------------------
+   Aplikasi mengunduh tleserisme.db SENDIRI ke penyimpanan miliknya,
+   sepotong-sepotong, lewat jembatan asli Android (CapacitorHttp) —
+   bukan lewat fetch peramban — sehingga:
+     • tidak butuh laptop atau file manager
+     • tidak terhalang kunci folder Android/data
+     • BISA DILANJUTKAN kalau sinyal putus: potongan yang sudah
+       tersimpan tidak diunduh ulang (mulai dari ukuran berkas
+       separuh-jadi yang masih ada di penyimpanan aplikasi)
+   ============================================================ */
+const NAMA_UNDUH = 'tleserisme-unduh.db';   // berkas separuh-jadi di folder DATA
+const POTONG_UNDUH = 4 * 1024 * 1024;       // 4 MB per tarikan
+let unduhBerhenti = false;
+
+function HTTP() {
+  const C = window.Capacitor;
+  const h = C && C.Plugins && C.Plugins.CapacitorHttp;
+  if (!h) throw new Error('Jembatan unduh (CapacitorHttp) tidak tersedia di aplikasi ini');
+  return h;
+}
+
+/** ambil satu header tanpa peduli besar/kecil hurufnya */
+function ambilHeader(h, nama) {
+  if (!h) return '';
+  nama = nama.toLowerCase();
+  for (const k in h) if (k.toLowerCase() === nama) return h[k];
+  return '';
+}
+
+/** berapa byte yang sudah pernah terunduh (untuk lanjut) */
+async function ukuranParsial() {
+  try {
+    const st = await DB.FS().stat({ path: NAMA_UNDUH, directory: 'DATA' });
+    return Number(st.size) || 0;
+  } catch (e) { return 0; }
+}
+
+/** tanya ukuran berkas penuh ke server (via minta 1 byte) */
+async function ukuranTotalServer(url) {
+  const r = await HTTP().request({
+    method: 'GET', url, headers: { Range: 'bytes=0-0' }, responseType: 'text',
+    connectTimeout: 30000, readTimeout: 30000
+  });
+  if (r.status === 401 || r.status === 403) throw new Error('akses ditolak (berkas terkunci?)');
+  if (r.status === 404) throw new Error('berkas tidak ada di alamat itu (404) — cek tag/rilis GitHub-nya');
+  const cr = ambilHeader(r.headers, 'content-range');
+  let total = Number((String(cr).split('/')[1] || '').trim()) || 0;
+  if (!total && r.status === 200) total = Number(ambilHeader(r.headers, 'content-length')) || 0;
+  if (!total) throw new Error('server tidak menyebut ukuran berkas (Range tak dilayani)');
+  return total;
+}
+
+/** atur tampilan tombol unduh */
+function siapkanTombolUnduh(sedangJalan, adaParsial) {
+  const b = $('#btn-unduh');
+  if (!b) return;
+  if (sedangJalan) {
+    b.textContent = '■ Jeda unduhan';
+    b.onclick = () => { unduhBerhenti = true; b.textContent = 'Menghentikan…'; };
+  } else {
+    b.textContent = adaParsial ? '⭳ Lanjutkan unduhan' : '⭳ Unduh perpustakaan (±1,3 GB)';
+    b.onclick = unduhDanPasang;
+  }
+}
+
+/** siapkan layar pasang Android: tampilkan tombol unduh kalau alamatnya ada */
+async function siapPasangAndroid() {
+  const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
+  const b = $('#btn-unduh');
+  if (!b) return;
+  if (!url) { b.style.display = 'none'; return; }
+  b.style.display = 'block';
+  let parsial = 0;
+  try { parsial = await ukuranParsial(); } catch (e) { }
+  siapkanTombolUnduh(false, parsial > 0);
+  if (parsial > 0) {
+    laporPasang('Ada unduhan yang belum kelar (' + rapiUkuran(parsial) +
+      '). Tekan <b>Lanjutkan unduhan</b> untuk nyambung dari situ.');
+  }
+}
+
+/** unduh berkas penuh, sepotong-sepotong, lalu pasang */
+async function unduhDanPasang() {
+  const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
+  if (!url) { laporPasang('Alamat unduh belum diatur.', 'var(--bahaya)'); return; }
+
+  unduhBerhenti = false;
+  const Filesystem = DB.FS();
+  siapkanTombolUnduh(true);
+  $('#btn-pasang').style.display = 'none';
+  $('#btn-cari-sendiri').style.display = 'none';
+
+  try {
+    laporPasang('Menyiapkan unduhan…');
+    const total = await ukuranTotalServer(url);
+    let sudah = await ukuranParsial();
+    if (sudah > total) {                       // berkas separuh rusak/beda → mulai ulang
+      try { await Filesystem.deleteFile({ path: NAMA_UNDUH, directory: 'DATA' }); } catch (e) { }
+      sudah = 0;
+    }
+
+    const t0 = Date.now(), sudah0 = sudah;
+    let akhirLapor = 0;
+
+    while (sudah < total) {
+      if (unduhBerhenti) {
+        laporPasang('Unduhan dijeda di ' + rapiUkuran(sudah) + ' / ' + rapiUkuran(total) +
+          '.<br>Tekan <b>Lanjutkan unduhan</b> kapan pun untuk nyambung.');
+        siapkanTombolUnduh(false, true);
+        return;
+      }
+
+      const end = Math.min(sudah + POTONG_UNDUH, total) - 1;
+      const r = await HTTP().request({
+        method: 'GET', url, headers: { Range: 'bytes=' + sudah + '-' + end },
+        responseType: 'blob', connectTimeout: 30000, readTimeout: 120000
+      });
+
+      // server HARUS jawab potongan (206). Kalau 200 = kirim seluruhnya → tolak,
+      // karena menelan 1,3 GB sekaligus bikin HP kehabisan ingatan.
+      if (r.status === 200 && (sudah > 0 || end < total - 1)) {
+        throw new Error('server tidak melayani potongan (Range) — host ini tak cocok untuk unduh bertahap');
+      }
+      if (r.status !== 206 && r.status !== 200) throw new Error('server menjawab ' + r.status);
+
+      const b64 = r.data;
+      if (!b64) throw new Error('potongan kosong dari server');
+      if (sudah === 0) await Filesystem.writeFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
+      else await Filesystem.appendFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
+      sudah = end + 1;
+
+      const skr = Date.now();
+      if (skr - akhirLapor > 500 || sudah >= total) {
+        akhirLapor = skr;
+        const persen = (sudah / total) * 100;
+        const detik = (skr - t0) / 1000;
+        const laju = detik > 1 ? (sudah - sudah0) / detik : 0;    // byte/detik
+        const sisa = laju > 0 ? Math.round((total - sudah) / laju / 60) : null;
+        laporPasang('Mengunduh <b>' + persen.toFixed(1) + '%</b> (' +
+          rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ')' +
+          (laju > 0 ? ' · ' + rapiUkuran(laju) + '/dtk' : '') +
+          (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
+          '<br><span style="font-size:11px;opacity:.8;line-height:1.9">Sinyal putus? Santai — ' +
+          'tekan lanjut, gak ngulang dari nol. Jangan tutup aplikasi selama mengunduh.</span>');
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    laporPasang('Unduhan selesai — memasang…');
+    try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
+    await Filesystem.rename({
+      from: NAMA_UNDUH, to: NAMA_BERKAS, directory: 'DATA', toDirectory: 'DATA'
+    });
+    await pasangkanDanBuka();
+  } catch (e) {
+    const m = (e && (e.message || e.errorMessage)) || String(e);
+    laporPasang('Unduhan terhenti: ' + m +
+      '<br><br>Tekan <b>Lanjutkan unduhan</b> untuk nyambung dari potongan terakhir.',
+      'var(--bahaya)');
+    let parsial = 0; try { parsial = await ukuranParsial(); } catch (e2) { }
+    siapkanTombolUnduh(false, parsial > 0);
   }
 }
 
