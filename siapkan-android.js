@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const sharp = require('sharp');
 
 const RES = 'android/app/src/main/res';
@@ -135,8 +136,32 @@ function izin() {
   console.log('  izin dipasang');
 }
 
+/* ------------------------------------------------------------------
+   KUNCI TANDA TANGAN TETAP
+   ------------------------------------------------------------------
+   Tiap build CI berjalan di mesin baru. Kalau dibiarkan, Android SDK
+   membuat debug.keystore ACAK setiap kali -> "sidik jari" APK berubah
+   tiap rilis -> Android menolak update-numpuk, pengguna terpaksa
+   uninstall (dan basis data pun ikut hilang).
+
+   Dengan menaruh SATU keystore tetap (disimpan di repo: keystore/debug.keystore,
+   memakai kredensial debug standar) ke ~/.android/debug.keystore SEBELUM
+   Gradle jalan, semua APK jadi bertanda tangan sama. Efeknya: pengguna bisa
+   MEMASANG DI ATAS versi lama tanpa uninstall — basis datanya tetap utuh,
+   tidak perlu unduh ulang. Cukup untuk sebar mandiri (bukan Play Store).
+   ------------------------------------------------------------------ */
+function kunciTetap() {
+  const src = path.join('keystore', 'debug.keystore');
+  if (!fs.existsSync(src)) { console.log('  (keystore tetap tidak ada — dilewati)'); return; }
+  const dir = path.join(os.homedir(), '.android');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(src, path.join(dir, 'debug.keystore'));
+  console.log('  kunci tanda tangan tetap dipasang ->', path.join(dir, 'debug.keystore'));
+}
+
 (async () => {
   console.log('Menyiapkan Android…');
+  kunciTetap();
   await ikon();
   await splash();
   warna();
