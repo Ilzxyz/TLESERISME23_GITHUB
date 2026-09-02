@@ -255,6 +255,28 @@ body.terang .alat .a.on{background:#FBF1DC}
 .tombol.lembut{background:var(--raise);border:1px solid var(--line2);color:var(--ink)}
 #pasang .pesan{margin-top:14px;font-size:12.5px;color:var(--bahaya);max-width:440px}
 
+/* ---------------- gerbang kata sandi ---------------- */
+#gerbang{position:fixed;inset:0;background:var(--deep);z-index:95;
+  display:none;flex-direction:column;align-items:center;justify-content:flex-start;
+  padding:38px 26px 60px;text-align:center;overflow-y:auto}
+#gerbang.on{display:flex}
+#gerbang img{width:88px;margin-bottom:18px}
+#gerbang h1{margin:0 0 4px;font-size:24px;letter-spacing:-.5px;color:var(--gold2)}
+#gerbang .sub{margin:0 0 20px;color:var(--ink2);font-size:13px}
+#gerbang .kotak{background:var(--raise);border:1px solid var(--line);border-radius:15px;
+  padding:15px 17px;text-align:left;max-width:460px;width:100%;margin-bottom:15px}
+#gerbang .kotak.amanah{border-color:var(--goldc);
+  background:linear-gradient(160deg,rgba(233,188,107,.10),rgba(19,30,48,.45))}
+#gerbang .kotak h4{margin:0 0 7px;font-size:13px;color:var(--gold);font-weight:650}
+#gerbang .kotak p{margin:0;color:var(--ink2);font-size:12.5px;line-height:1.85}
+#gerbang .cari-kotak{max-width:460px;width:100%}
+#gerbang .ingat{display:flex;align-items:center;gap:8px;justify-content:center;
+  color:var(--ink2);font-size:12.5px;margin:2px 0 15px;cursor:pointer;
+  max-width:460px;width:100%}
+#gerbang .ingat input{width:16px;height:16px;accent-color:var(--gold)}
+#gerbang .pesan{margin-top:13px;font-size:12.5px;color:var(--bahaya);
+  max-width:440px;min-height:16px}
+
 /* ---------------- tirai (daftar isi / catatan) ---------------- */
 #tirai{position:fixed;inset:0;background:rgba(4,8,15,.72);z-index:80;display:none}
 #tirai.on{display:block}

@@ -910,6 +910,7 @@ const DB = (() => {
   async function judulKitab(ids) {
     const bersih = [...new Set(ids.filter(x => x != null))];
     if (!bersih.length) return {};
+    if (!siap) return {};              // tanpa DB kitab tersambung, tak ada judul
     const baris = await tanya(
       'SELECT id, judul, fan_nama FROM kitab WHERE id IN (' +
       bersih.map(() => '?').join(',') + ')', bersih);
@@ -999,7 +1000,9 @@ const DB = (() => {
   };
   /** pilih sendiri: kalau di Chrome pakai penyimpanan peramban, selain itu pakai SQL */
   function bagi(nama) {
-    return (...a) => (mode === 'lokal' ? LOKAL : SQLAN)[nama](...a);
+    // Catatan/tanda/riwayat SELALU disimpan di penyimpanan peramban (localStorage),
+    // terpisah dari basis data kitab — supaya tetap jalan walau DB belum tersambung.
+    return (...a) => LOKAL[nama](...a);
   }
 
   /** berapa kali menyentuh internet vs memakai simpanan */

@@ -45,21 +45,127 @@ const S = {
 /* ============================================================
    MULAI
    ============================================================ */
+/* ---------- kunci perpustakaan (kata sandi) ----------
+   Aplikasi bisa DIBUKA & DIPAKAI (tambah kitab / catatan sendiri) TANPA sandi.
+   Kata sandi hanya diminta saat MENYAMBUNGKAN isi perpustakaan (Bahtsul Masail)
+   dari Pengaturan. Sandi disimpan sebagai hash SHA-256, bukan teks polos. */
+const KUNCI_GERBANG = 'tleserisme23.terbuka';
+const SANDI_HASH = '7bd1981832eaf2f92459dabe3f0c1711dcc4b1e1ddf47733cfd48ea666921362';
+
+async function hashSandi(t) {
+  try {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (e) { return null; }
+}
+function sudahTerbuka() {
+  try { return localStorage.getItem(KUNCI_GERBANG) === '1'; } catch (e) { return false; }
+}
+function pustakaAktif() { return !!(window.DB && DB.siap); }
+
+/* ---------- layar kata sandi (dipanggil dari Pengaturan/ajakan) ---------- */
+function tampilGerbang() {
+  const g = $('#gerbang'); if (g) g.classList.add('on');
+  const p = $('#gerbang-pesan'); if (p) p.textContent = '';
+  const i = $('#gerbang-sandi'); if (i) { i.value = ''; setTimeout(() => { try { i.focus(); } catch (e) { } }, 150); }
+}
+function sembunyiGerbang() { const g = $('#gerbang'); if (g) g.classList.remove('on'); }
+
+async function bukaGerbang() {
+  const inp = $('#gerbang-sandi'), pesan = $('#gerbang-pesan');
+  const sandi = ((inp && inp.value) || '').trim().toLowerCase();
+  if (!sandi) { if (pesan) pesan.textContent = 'Kata sandinya belum diisi.'; return; }
+  const h = await hashSandi(sandi);
+  if (!h || h !== SANDI_HASH) {
+    if (pesan) pesan.textContent = 'Kata sandi salah. Coba lagi.';
+    if (inp) { inp.value = ''; inp.focus(); }
+    return;
+  }
+  const ingat = $('#gerbang-ingat');
+  if (ingat && ingat.checked) { try { localStorage.setItem(KUNCI_GERBANG, '1'); } catch (e) { } }
+  sembunyiGerbang();
+  await sambungPerpustakaan(false);
+}
+function pasangGerbang() {
+  const b = $('#gerbang-buka'); if (b) b.onclick = bukaGerbang;
+  const t = $('#gerbang-tutup'); if (t) t.onclick = sembunyiGerbang;
+  const i = $('#gerbang-sandi');
+  if (i) i.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); bukaGerbang(); } };
+}
+
+/* Dipanggil dari Pengaturan/ajakan. HP yang sudah pernah dibuka -> langsung
+   sambung; kalau belum -> minta kata sandi dulu. */
+function mintaSandiSambung() {
+  if (pustakaAktif()) return;
+  if (sudahTerbuka()) { sambungPerpustakaan(false); return; }
+  tampilGerbang();
+}
+
+/* ---------- MULAI: selalu masuk aplikasi dulu (tanpa tembok) ---------- */
 async function mulai() {
   Setel.muat();
   pasangKendali();
+  pasangGerbang();
+  await masukAplikasi();
+  if (sudahTerbuka()) sambungPerpustakaan(true);   // diam-diam kalau sudah pernah dibuka
+}
 
+/* kerangka aplikasi; jalan walau DB belum tersambung */
+async function masukAplikasi() {
+  sembunyiGerbang();
+  $('#pasang').classList.remove('on');
+  $('#aplikasi').style.display = 'flex';
+  await isiBeranda();
+  try { await pulihkanPosisi(); } catch (e) { }
+}
+
+/* sambungkan isi perpustakaan (DB). diam=true -> jangan munculkan layar unduh
+   kalau DB belum ada; cukup biarkan Beranda menampilkan ajakan. */
+async function sambungPerpustakaan(diam) {
   if (DB.diAndroid()) {
     try {
       await DB.bukaAndroid();
-      await lanjutJalan();
+      await DB.siapkanTabelPengguna();
+      await segarkanPustaka();
+      return true;
     } catch (e) {
-      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) { tampilPasang(); siapPasangAndroid(); }
-      else tampilPasang('Gagal membuka basis data: ' + (e.message || e));
+      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) {
+        if (!diam) { tampilPasang(); siapPasangAndroid(); }
+      } else if (!diam) {
+        tampilPasang('Gagal membuka basis data: ' + (e.message || e));
+      }
+      return false;
     }
   } else {
-    await mulaiChrome();
+    const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
+    if (alamat) {
+      try { await DB.bukaJauh(alamat, kunciTersimpan()); await segarkanPustaka(); return true; }
+      catch (e) { if (!diam) { tampilPasang(); mulaiDariInternet(alamat); } return false; }
+    }
+    if (!diam) { tampilPasang(); mulaiChrome(); }
+    return false;
   }
+}
+
+/* setelah tersambung: kembali ke aplikasi & segarkan tampilan */
+async function segarkanPustaka() {
+  await masukAplikasi();
+  try { if (S.layar === 'atur') isiAtur(); } catch (e) { }
+}
+
+/* ---------- ajakan menyambungkan (untuk layar yang butuh DB) ---------- */
+function ajakanSambungKecil() {
+  return `<div class="kosong" style="grid-column:1/-1;padding:26px">
+    <div style="font-size:15px;color:var(--ink);margin-bottom:6px">Perpustakaan belum tersambung</div>
+    Buka isi kitab &amp; Bahtsul Masail dengan menyambungkan perpustakaan dulu
+    (perlu kata sandi).
+    <div style="height:14px"></div>
+    <button class="tombol" id="ajak-sambung" style="max-width:280px">⚿ Sambungkan perpustakaan</button>
+  </div>`;
+}
+function pasangAjakan() {
+  const b = document.querySelector('#ajak-sambung');
+  if (b) b.onclick = () => { if (S.layar !== 'atur') pergi('atur'); setTimeout(mintaSandiSambung, 120); };
 }
 
 /* ============================================================
@@ -831,6 +937,12 @@ function pergi(nama) {
   $('#bilah-t').textContent = j[0];
   $('#bilah-s').textContent = j[1] || '—';
   $('#isi').scrollTop = 0;
+  if ((nama === 'cari' || nama === 'jelajah') && !pustakaAktif()) {
+    const w = nama === 'cari' ? $('#hasil') : $('#daftar-kitab');
+    if (w) { w.innerHTML = ajakanSambungKecil(); pasangAjakan(); }
+    simpanPosisi();
+    return;
+  }
   if (nama === 'cari') {
     // panaskan mesin cari diam-diam sambil orangnya belum selesai mengetik
     if (window.DB && DB.prapanas) DB.prapanas();
@@ -847,6 +959,13 @@ function pergi(nama) {
    BERANDA
    ============================================================ */
 async function isiBeranda() {
+  if (!pustakaAktif()) {
+    const k = $('#kpi'); if (k) k.innerHTML = ajakanSambungKecil();
+    pasangAjakan();
+    const kf = $('#ket-fan'); if (kf) kf.textContent = 'belum tersambung';
+    const rw = $('#riwayat'); if (rw) rw.innerHTML = '';
+    return;
+  }
   try {
     const i = await DB.info();
     $('#kpi').innerHTML = `
@@ -946,6 +1065,10 @@ let sedangCari = false;
 let cariKotor = false;      // ada permintaan baru selagi yang lama masih jalan
 let sambungCari = null;     // keadaan untuk "tampilkan lebih banyak" (paginasi)
 async function jalankanCari() {
+  if (!pustakaAktif()) {
+    const w = $('#hasil'); if (w) { w.innerHTML = ajakanSambungKecil(); pasangAjakan(); }
+    return;
+  }
   if (sedangCari) { cariKotor = true; return; }
   sedangCari = true;
   cariKotor = false;
@@ -1998,6 +2121,19 @@ async function isiAtur() {
   $('#s-abaikan .sw').classList.toggle('on', Setel.data.abaikan);
   $('#s-hamzah .sw').classList.toggle('on', Setel.data.hamzah);
   $('#v-besar').textContent = Setel.data.besar + ' pt';
+
+  if (!pustakaAktif()) {
+    const box = $('#info-db');
+    if (box) {
+      box.innerHTML = `<div class="set" id="s-sambung" style="cursor:pointer">
+        <div class="n"><div class="t">Perpustakaan Bahtsul Masail</div>
+          <div class="s">Belum tersambung — ketuk untuk menyambungkan (perlu kata sandi)</div></div>
+        <span class="nilai" style="color:var(--gold)">⚿ Sambungkan ›</span></div>`;
+      const s = $('#s-sambung'); if (s) s.onclick = mintaSandiSambung;
+    }
+    return;
+  }
+
   try {
     const i = await DB.info();
     $('#info-db').innerHTML = `
