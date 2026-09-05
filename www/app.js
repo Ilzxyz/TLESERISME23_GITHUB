@@ -107,7 +107,28 @@ async function mulai() {
   pasangKendali();
   pasangGerbang();
   await masukAplikasi();
-  if (sudahTerbuka()) sambungPerpustakaan(true);   // diam-diam kalau sudah pernah dibuka
+  sambungOtomatis();
+}
+
+/* Sambungkan otomatis saat buka app:
+   - Android : kalau DB sudah TERPASANG di HP (didapat lewat unduhan ber-sandi),
+               langsung buka. Tidak perlu sandi lagi tiap buka. Kalau belum ada,
+               diam saja — pengguna mengaktifkannya lewat Pengaturan.
+   - Web/desktop : DB dibaca dari server (bisa terpapar publik), jadi TETAP
+                   butuh buka-kunci (sandi) dulu sebelum tersambung. */
+async function sambungOtomatis() {
+  if (DB.diAndroid()) {
+    try {
+      await DB.bukaAndroid();
+      await DB.siapkanTabelPengguna();
+      await segarkanPustaka();
+    } catch (e) { /* DB belum ada -> diam; aktifkan lewat Pengaturan */ }
+  } else if (sudahTerbuka()) {
+    const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
+    if (alamat) {
+      try { await DB.bukaJauh(alamat, kunciTersimpan()); await segarkanPustaka(); } catch (e) { }
+    }
+  }
 }
 
 /* kerangka aplikasi; jalan walau DB belum tersambung */
@@ -147,25 +168,24 @@ async function sambungPerpustakaan(diam) {
   }
 }
 
-/* setelah tersambung: kembali ke aplikasi & segarkan tampilan */
+/* setelah tersambung: segarkan layar yang sedang tampil (tanpa lompat-lompat) */
 async function segarkanPustaka() {
-  await masukAplikasi();
-  try { if (S.layar === 'atur') isiAtur(); } catch (e) { }
+  $('#pasang').classList.remove('on');
+  sembunyiGerbang();
+  $('#aplikasi').style.display = 'flex';
+  if (S.layar === 'atur') isiAtur();
+  else if (S.layar === 'cari') { const w = $('#hasil'); if (w) w.innerHTML = petunjukCari(); }
+  else if (S.layar === 'jelajah') gambarJelajah();
+  else if (S.layar === 'koleksi') isiKoleksi();
+  else await isiBeranda();
 }
 
-/* ---------- ajakan menyambungkan (untuk layar yang butuh DB) ---------- */
-function ajakanSambungKecil() {
-  return `<div class="kosong" style="grid-column:1/-1;padding:26px">
-    <div style="font-size:15px;color:var(--ink);margin-bottom:6px">Perpustakaan belum tersambung</div>
-    Buka isi kitab &amp; Bahtsul Masail dengan menyambungkan perpustakaan dulu
-    (perlu kata sandi).
-    <div style="height:14px"></div>
-    <button class="tombol" id="ajak-sambung" style="max-width:280px">⚿ Sambungkan perpustakaan</button>
-  </div>`;
-}
-function pasangAjakan() {
-  const b = document.querySelector('#ajak-sambung');
-  if (b) b.onclick = () => { if (S.layar !== 'atur') pergi('atur'); setTimeout(mintaSandiSambung, 120); };
+/* petunjuk halus untuk layar Cari/Jelajah saat perpustakaan belum aktif —
+   tanpa tombol mencolok; aktivasi ada di Pengaturan. */
+function hintAktifkan() {
+  return `<div class="kosong" style="padding:30px 22px;line-height:1.95">
+    Perpustakaan belum aktif.<br>
+    Aktifkan dulu lewat <b>⚙ Pengaturan → Sambungkan perpustakaan</b>.</div>`;
 }
 
 /* ============================================================
@@ -939,7 +959,7 @@ function pergi(nama) {
   $('#isi').scrollTop = 0;
   if ((nama === 'cari' || nama === 'jelajah') && !pustakaAktif()) {
     const w = nama === 'cari' ? $('#hasil') : $('#daftar-kitab');
-    if (w) { w.innerHTML = ajakanSambungKecil(); pasangAjakan(); }
+    if (w) w.innerHTML = hintAktifkan();
     simpanPosisi();
     return;
   }
@@ -960,9 +980,10 @@ function pergi(nama) {
    ============================================================ */
 async function isiBeranda() {
   if (!pustakaAktif()) {
-    const k = $('#kpi'); if (k) k.innerHTML = ajakanSambungKecil();
-    pasangAjakan();
-    const kf = $('#ket-fan'); if (kf) kf.textContent = 'belum tersambung';
+    // Perpustakaan belum aktif: Beranda tetap bersih (tanpa kartu ajakan).
+    // Aktivasi ada diam-diam di Pengaturan.
+    const k = $('#kpi'); if (k) k.innerHTML = '';
+    const kf = $('#ket-fan'); if (kf) kf.textContent = '—';
     const rw = $('#riwayat'); if (rw) rw.innerHTML = '';
     return;
   }
@@ -1066,7 +1087,7 @@ let cariKotor = false;      // ada permintaan baru selagi yang lama masih jalan
 let sambungCari = null;     // keadaan untuk "tampilkan lebih banyak" (paginasi)
 async function jalankanCari() {
   if (!pustakaAktif()) {
-    const w = $('#hasil'); if (w) { w.innerHTML = ajakanSambungKecil(); pasangAjakan(); }
+    const w = $('#hasil'); if (w) w.innerHTML = hintAktifkan();
     return;
   }
   if (sedangCari) { cariKotor = true; return; }
