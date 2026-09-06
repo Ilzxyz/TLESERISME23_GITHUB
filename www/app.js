@@ -17,9 +17,6 @@ const Setel = {
       const s = localStorage.getItem('tleser_setel');
       if (s) Object.assign(this.data, JSON.parse(s));
     } catch (e) { }
-    // nilai lama bisa di luar jangkauan tombol − / + ; tarik balik ke rentang sah
-    const b = Number(this.data.besar);
-    this.data.besar = (b >= 14 && b <= 30) ? b : 18;
     this.terap();
   },
   simpan() {
@@ -104,44 +101,6 @@ function mintaSandiSambung() {
   tampilGerbang();
 }
 
-/* Tombol "Coba baca lagi / perbaiki" di Pengaturan. Menjalankan bukaAndroid
-   lagi — yang sekarang bisa menyelesaikan pemasangan yang belum kelar sendiri.
-   Kalau berkasnya memang rusak, pesannya diperbarui apa adanya. */
-async function perbaikiPustaka() {
-  const box = $('#info-db');
-  if (box) box.innerHTML = `<div class="muat"><div class="puter"></div>mencoba membaca lagi…</div>`;
-  try {
-    await DB.bukaAndroid();
-    gagalBukaTerakhir = '';
-    await DB.siapkanTabelPengguna();
-    await segarkanPustaka();
-  } catch (e) {
-    const msg = String((e && (e.message || e)) || '');
-    gagalBukaTerakhir = (msg.indexOf('BELUM_ADA_DB') >= 0)
-      ? '' : msg;
-    if (msg.indexOf('BELUM_ADA_DB') >= 0) {
-      // ternyata tidak ada berkas sama sekali -> arahkan ke pemasangan
-      if (DB.diAndroid()) { tampilPasang(); siapPasangAndroid(); }
-      else mintaSandiSambung();
-      return;
-    }
-    isiAtur();   // gambar ulang kartu galat dengan pesan terbaru
-  }
-}
-
-/* Tombol "Unduh ulang dari nol". Berkas yang rusak tidak bisa ditambal dengan
-   melanjutkan unduhan — potongannya sudah tak sejajar. Jadi dibuang bersih,
-   lalu layar unduh dibuka lagi dari awal. */
-async function unduhUlangBersih() {
-  if (!confirm('Hapus berkas perpustakaan yang rusak lalu mulai unduhan dari nol?\n\n' +
-    'Yang terunduh sebelumnya (yang rusak) akan dibuang. Catatan & dokumen pribadimu tidak terpengaruh.')) return;
-  try { await DB.bersihkanAndroid(); } catch (e) { }
-  gagalBukaTerakhir = '';
-  tampilPasang();
-  siapPasangAndroid();
-  laporPasang('Berkas lama sudah dibuang. Tekan <b>Unduh perpustakaan</b> untuk mulai dari nol.');
-}
-
 /* ---------- MULAI: selalu masuk aplikasi dulu (tanpa tembok) ---------- */
 async function mulai() {
   Setel.muat();
@@ -157,25 +116,13 @@ async function mulai() {
                diam saja — pengguna mengaktifkannya lewat Pengaturan.
    - Web/desktop : DB dibaca dari server (bisa terpapar publik), jadi TETAP
                    butuh buka-kunci (sandi) dulu sebelum tersambung. */
-/* Alasan gagal terakhir membuka perpustakaan — supaya layar Cari/Jelajah dan
-   Pengaturan bisa memberi tahu APA yang salah, bukan cuma "belum aktif". */
-let gagalBukaTerakhir = '';
-
 async function sambungOtomatis() {
   if (DB.diAndroid()) {
     try {
       await DB.bukaAndroid();
-      gagalBukaTerakhir = '';
       await DB.siapkanTabelPengguna();
       await segarkanPustaka();
-    } catch (e) {
-      const msg = String((e && (e.message || e)) || '');
-      /* "BELUM_ADA_DB" = memang belum diunduh -> wajar, diam saja (aktifkan
-         lewat Pengaturan). Selain itu (mis. berkas rusak/terpotong) JANGAN
-         diam — simpan alasannya supaya bisa ditampilkan & ditindaklanjuti. */
-      gagalBukaTerakhir = (msg.indexOf('BELUM_ADA_DB') >= 0) ? '' : msg;
-      try { await DB.siapkanTabelPengguna(); } catch (e2) { }
-    }
+    } catch (e) { /* DB belum ada -> diam; aktifkan lewat Pengaturan */ }
   } else if (sudahTerbuka()) {
     const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
     if (alamat) {
@@ -189,7 +136,6 @@ async function masukAplikasi() {
   sembunyiGerbang();
   $('#pasang').classList.remove('on');
   $('#aplikasi').style.display = 'flex';
-  segarkanChipTerkunci();
   await isiBeranda();
   try { await pulihkanPosisi(); } catch (e) { }
 }
@@ -227,7 +173,6 @@ async function segarkanPustaka() {
   $('#pasang').classList.remove('on');
   sembunyiGerbang();
   $('#aplikasi').style.display = 'flex';
-  segarkanChipTerkunci();
   if (S.layar === 'atur') isiAtur();
   else if (S.layar === 'cari') { const w = $('#hasil'); if (w) w.innerHTML = petunjukCari(); }
   else if (S.layar === 'jelajah') gambarJelajah();
@@ -238,53 +183,9 @@ async function segarkanPustaka() {
 /* petunjuk halus untuk layar Cari/Jelajah saat perpustakaan belum aktif —
    tanpa tombol mencolok; aktivasi ada di Pengaturan. */
 function hintAktifkan() {
-  if (gagalBukaTerakhir) {
-    const rusak = /DB_RUSAK|malformed|corrupt/i.test(gagalBukaTerakhir);
-    return `<div class="kosong" style="padding:30px 22px;line-height:1.95">
-      <b style="color:var(--bahaya)">Perpustakaan gagal dibaca.</b><br>
-      ${rusak
-        ? 'Berkasnya sepertinya belum lengkap / rusak (unduhan terputus).'
-        : 'Berkasnya ada tapi belum bisa dibuka.'}<br>
-      Buka <b>⚙ Pengaturan → Basis data</b> untuk memperbaiki${rusak ? ' / mengunduh ulang' : ''}.
-      <div style="margin-top:14px;font-size:12px;opacity:.85">
-        Catatan &amp; dokumenmu sendiri tetap bisa dipakai.</div></div>`;
-  }
   return `<div class="kosong" style="padding:30px 22px;line-height:1.95">
     Perpustakaan belum aktif.<br>
-    Aktifkan dulu lewat <b>⚙ Pengaturan → Sambungkan perpustakaan</b>.
-    <div style="margin-top:14px;font-size:12px;opacity:.85">
-      Catatan &amp; dokumenmu sendiri tetap bisa dipakai tanpa itu.</div></div>`;
-}
-
-/* ---------- pemindah saringan (dipakai juga saat perpustakaan belum aktif) ---------- */
-function pilihSaringCari(jenis) {
-  S.jenisCari = jenis;
-  $$('#saring-jenis .chip').forEach(c => c.classList.toggle('on', c.dataset.j === jenis));
-}
-function pilihDaftarJelajah(jenis) {
-  KAT.jenis = jenis;
-  $$('#pilih-daftar .chip').forEach(c => c.classList.toggle('on', c.dataset.daftar === jenis));
-  const qf = $('#q-fan');
-  if (qf) qf.placeholder = jenis === 'fan' ? 'Ketik nama fan…' : 'Ketik nama kitab…';
-}
-
-/* Saringan yang memang membutuhkan tleserisme.db diredupkan selama
-   perpustakaan belum tersambung — supaya ketukannya tidak berakhir
-   di layar kosong tanpa penjelasan. */
-function segarkanChipTerkunci() {
-  const aktif = pustakaAktif();
-  const kunci = (el, perluDB) => {
-    if (!el) return;
-    const mati = perluDB && !aktif;
-    el.disabled = mati;
-    el.style.opacity = mati ? '.4' : '';
-    el.style.cursor = mati ? 'default' : '';
-    el.title = mati ? 'Perlu perpustakaan aktif' : '';
-  };
-  $$('#saring-jenis .chip').forEach(c => kunci(c, c.dataset.j !== 'catatan'));
-  $$('#pilih-daftar .chip').forEach(c => kunci(c, c.dataset.daftar !== 'milik'));
-  kunci($('#tg-frasa'), true);
-  kunci($('#tg-kitab'), true);
+    Aktifkan dulu lewat <b>⚙ Pengaturan → Sambungkan perpustakaan</b>.</div>`;
 }
 
 /* ============================================================
@@ -593,11 +494,6 @@ async function pulihkanPosisi() {
     S.namaKitabCari = '';
     if (typeof KAT !== 'undefined' && p.daftar) KAT.jenis = p.daftar;
 
-    /* Tempat terakhir di layar baca cuma bisa dibuka kalau perpustakaannya ada.
-       Tanpa itu, memaksanya berarti melempar galat sebelum aplikasi sempat
-       tampil — lebih baik mulai dari Beranda. */
-    if (p.layar === 'baca' && !pustakaAktif()) return false;
-
     if (p.layar === 'baca' && p.kitab) {
       await bukaKitab(p.kitab, p.urut || 1);
       /* Sampai di halaman yang sama tapi terlempar ke paragraf pertama masih
@@ -807,51 +703,16 @@ async function salinDariPilihan(berkas) {
   }
 }
 
-/** langkah terakhir: pindahkan ke tempat mesin basis data, lalu buka.
-   Tiap langkah dilaporkan; kalau gagal, tampilkan jejak lengkap supaya
-   ketahuan PERSIS mati di mana — bukan "gagal" tanpa keterangan. */
+/** langkah terakhir: pindahkan ke tempat mesin basis data, lalu buka */
 async function pasangkanDanBuka() {
-  const jejak = [];
-  const lapor = (t) => { jejak.push(t); laporPasang(jejak.join('<br>')); };
-  try {
-    lapor('1/4 · Memindahkan berkas ke mesin basis data…');
-    await DB.pasangDariBerkas(NAMA_BERKAS);
-    lapor('2/4 · Berkas terpasang ✓');
-
-    lapor('3/4 · Membuka perpustakaan…');
-    await DB.bukaAndroid();
-    lapor('4/4 · Terbuka ✓ — menyiapkan tampilan…');
-
-    await lanjutJalan();
-  } catch (e) {
-    const m = (e && (e.message || e.errorMessage)) || String(e);
-    // kumpulkan bukti supaya bisa didiagnosis dari satu layar
-    let bukti = '';
-    try {
-      const C = window.Capacitor;
-      const plug = (C && C.Plugins) ? Object.keys(C.Plugins).join(', ') : '(kosong)';
-      let ada = '?';
-      try { const r = await DB.SQ().isDatabase({ database: 'tleserisme' }); ada = JSON.stringify(r); } catch (x) { ada = 'err:' + (x.message || x); }
-      let stat = '?';
-      try { const s = await DB.FS().stat({ path: NAMA_BERKAS, directory: 'DATA' }); stat = rapiUkuran(s.size); } catch (x) { stat = 'tidak ada di DATA'; }
-      bukti = '<br><br><span style="font-size:11px;line-height:1.9;opacity:.85">' +
-        'GAGAL DI: ' + esc(m) + '<br>' +
-        'isDatabase: ' + esc(ada) + '<br>' +
-        'tleserisme.db di DATA: ' + esc(stat) + '<br>' +
-        'colokan: ' + esc(plug) + '</span>';
-    } catch (x2) { }
-    laporPasang(jejak.join('<br>') +
-      '<br><br><b style="color:var(--bahaya)">Berhenti.</b>' + bukti +
-      '<br><br>Screenshot layar ini — dari sini ketahuan persis salahnya.',
-      'var(--bahaya)');
-    gagalPasangDilaporkan = true;   // jangan sampai pesan luar menimpa jejak ini
-    throw e;   // biar pemanggil (unduh/pilih) tetap tahu gagal
-  }
+  laporPasang('Memasang…');
+  await DB.pasangDariBerkas(NAMA_BERKAS);
+  laporPasang('Membuka perpustakaan…');
+  await DB.bukaAndroid();
+  await lanjutJalan();
 }
-let gagalPasangDilaporkan = false;
 
 function tanganiGagalPasang(e) {
-  if (gagalPasangDilaporkan) { gagalPasangDilaporkan = false; return; }  // jejak detail sudah tampil
   const m = (e && (e.message || e.errorMessage)) || String(e);
   let saran = '';
   if (/space|ENOSPC|penuh|full/i.test(m)) {
@@ -986,127 +847,6 @@ async function siapPasangAndroid() {
   }
 }
 
-/* ---------- verifikasi potongan (anti-korup) ----------
-   Tiap potongan dicek sidik jari SHA-256-nya SEBELUM ditulis ke berkas.
-   Manifest (daftar sidik jari per potongan) diambil dari alamat yang sama
-   + ".manifest.json". Kalau manifestnya belum diunggah, unduhan tetap jalan
-   dengan cara lama (tanpa verifikasi) — jadi ini aman dipasang duluan. */
-function b64KeBytes(b64) {
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return arr;
-}
-async function sidikJari(bytes) {
-  const buf = await crypto.subtle.digest('SHA-256', bytes);
-  return Array.from(new Uint8Array(buf))
-    .map(b => b.toString(16).padStart(2, '0')).join('');
-}
-async function ambilManifest(url) {
-  try {
-    const r = await HTTP().request({
-      method: 'GET', url: url + '.manifest.json', responseType: 'text',
-      connectTimeout: 30000, readTimeout: 30000
-    });
-    if (r.status !== 200 && r.status !== 206) return null;
-    let data = r.data;
-    // CapacitorHttp kadang mem-base64-kan teks; coba kenali JSON-nya
-    if (typeof data === 'string' && data.trim()[0] !== '{') {
-      try { data = atob(data); } catch (e) { }
-    }
-    const m = (typeof data === 'string') ? JSON.parse(data) : data;
-    if (m && m.potong && Array.isArray(m.sha) && m.ukuran) return m;
-  } catch (e) { }
-  return null;
-}
-
-/** unduh dengan verifikasi per-potongan (butuh manifest + crypto.subtle) */
-async function unduhTerverifikasi(url, man) {
-  const Filesystem = DB.FS();
-  const potong = man.potong, total = man.ukuran, N = man.sha.length;
-
-  // lanjut dari potongan terverifikasi terakhir. Karena kita hanya MENULIS
-  // sesudah verifikasi, ukuran berkas selalu kelipatan potong yang utuh.
-  let sudahByte = 0;
-  try { sudahByte = await ukuranParsial(); } catch (e) { }
-  let i = Math.floor(sudahByte / potong);
-  if (sudahByte % potong !== 0 || i > N) {   // berkas ganjil → mulai bersih
-    try { await Filesystem.deleteFile({ path: NAMA_UNDUH, directory: 'DATA' }); } catch (e) { }
-    i = 0;
-  }
-
-  const t0 = Date.now(), iAwal = i;
-  let akhirLapor = 0;
-
-  while (i < N) {
-    if (unduhBerhenti) {
-      laporPasang('Unduhan dijeda di ' + rapiUkuran(i * potong) + ' / ' + rapiUkuran(total) +
-        '.<br>Tekan <b>Lanjutkan unduhan</b> kapan pun — potongan yang sudah benar tidak diulang.');
-      siapkanTombolUnduh(false, true);
-      return;
-    }
-
-    const mulai = i * potong;
-    const end = Math.min(mulai + potong, total) - 1;
-
-    // sampai 3 kali coba untuk SATU potongan; salah sidik jari = ambil lagi
-    let b64 = null, cocok = false, galatChunk = '';
-    for (let coba = 0; coba < 3 && !cocok; coba++) {
-      try {
-        const r = await HTTP().request({
-          method: 'GET', url, headers: { Range: 'bytes=' + mulai + '-' + end },
-          responseType: 'blob', connectTimeout: 30000, readTimeout: 120000
-        });
-        if (r.status !== 206 && r.status !== 200) { galatChunk = 'server menjawab ' + r.status; continue; }
-        b64 = r.data;
-        if (!b64) { galatChunk = 'potongan kosong'; continue; }
-        const sj = await sidikJari(b64KeBytes(b64));
-        if (sj === man.sha[i]) { cocok = true; }
-        else { galatChunk = 'sidik jari tak cocok (potongan ' + (i + 1) + ')'; b64 = null; }
-      } catch (e) {
-        galatChunk = (e && (e.message || e.errorMessage)) || String(e);
-      }
-    }
-
-    if (!cocok) {
-      // berhenti tanpa menulis yang salah; potongan benar sebelumnya tetap aman
-      laporPasang('Potongan ' + (i + 1) + '/' + N + ' gagal diverifikasi (' +
-        esc(galatChunk) + ').<br><br>Tekan <b>Lanjutkan unduhan</b> untuk mencoba lagi — ' +
-        'yang sudah benar (' + rapiUkuran(i * potong) + ') tidak diulang.', 'var(--bahaya)');
-      siapkanTombolUnduh(false, true);
-      return;
-    }
-
-    if (i === 0) await Filesystem.writeFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
-    else await Filesystem.appendFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
-    i++;
-
-    const skr = Date.now();
-    if (skr - akhirLapor > 500 || i >= N) {
-      akhirLapor = skr;
-      const sudah = Math.min(i * potong, total);
-      const persen = (sudah / total) * 100;
-      const detik = (skr - t0) / 1000;
-      const laju = detik > 1 ? ((i - iAwal) * potong) / detik : 0;
-      const sisa = laju > 0 ? Math.round((total - sudah) / laju / 60) : null;
-      laporPasang('Mengunduh <b>' + persen.toFixed(1) + '%</b> (' +
-        rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ') · ✓ terverifikasi' +
-        (laju > 0 ? ' · ' + rapiUkuran(laju) + '/dtk' : '') +
-        (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
-        '<br><span style="font-size:11px;opacity:.8;line-height:1.9">Sinyal putus? Aman — ' +
-        'tiap potongan dicek dulu, yang benar tersimpan permanen. Tekan lanjut kapan pun.</span>');
-      await new Promise(r => setTimeout(r, 0));
-    }
-  }
-
-  laporPasang('Unduhan selesai &amp; terverifikasi — memasang…');
-  try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
-  await Filesystem.rename({
-    from: NAMA_UNDUH, to: NAMA_BERKAS, directory: 'DATA', toDirectory: 'DATA'
-  });
-  await pasangkanDanBuka();
-}
-
 /** unduh berkas penuh, sepotong-sepotong, lalu pasang */
 async function unduhDanPasang() {
   const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
@@ -1120,15 +860,6 @@ async function unduhDanPasang() {
 
   try {
     laporPasang('Menyiapkan unduhan…');
-
-    /* Utamakan unduhan TERVERIFIKASI kalau manifest & crypto tersedia.
-       Kalau tidak, jatuh ke cara lama supaya tetap jalan. */
-    const adaKripto = !!(window.crypto && crypto.subtle && crypto.subtle.digest);
-    if (adaKripto) {
-      const man = await ambilManifest(url);
-      if (man) { await unduhTerverifikasi(url, man); return; }
-    }
-
     const total = await ukuranTotalServer(url);
     let sudah = await ukuranParsial();
     if (sudah > total) {                       // berkas separuh rusak/beda → mulai ulang
@@ -1191,40 +922,11 @@ async function unduhDanPasang() {
     await pasangkanDanBuka();
   } catch (e) {
     const m = (e && (e.message || e.errorMessage)) || String(e);
-
-    /* Kalau yang gagal itu langkah MEMASANG (bukan mengunduh), pasangkanDanBuka
-       sudah menampilkan jejak lengkapnya — JANGAN ditimpa. Berkas unduhan TIDAK
-       dihapus (auto-hapus dulu yang bikin muter tak berujung). Tombolnya diarahkan
-       untuk mencoba PASANG lagi tanpa mengunduh ulang. */
-    if (gagalPasangDilaporkan) {
-      gagalPasangDilaporkan = false;
-      const b = $('#btn-unduh');
-      if (b) { b.style.display = 'block'; b.textContent = '↻ Coba pasang lagi'; b.onclick = pasangUlangSaja; }
-      return;
-    }
-
-    // murni gagal di transport unduhan -> lanjutkan dari potongan terakhir
-    laporPasang('Unduhan terhenti: ' + esc(m) +
+    laporPasang('Unduhan terhenti: ' + m +
       '<br><br>Tekan <b>Lanjutkan unduhan</b> untuk nyambung dari potongan terakhir.',
       'var(--bahaya)');
     let parsial = 0; try { parsial = await ukuranParsial(); } catch (e2) { }
     siapkanTombolUnduh(false, parsial > 0);
-  }
-}
-
-/** coba pasang lagi dari berkas yang SUDAH terunduh (tanpa unduh ulang) */
-async function pasangUlangSaja() {
-  const Filesystem = DB.FS();
-  try {
-    // kalau berkas mentah masih ada di DATA, pasang; kalau sudah dipindah ke
-    // mesin, bukaAndroid akan menemukannya sendiri.
-    laporPasang('Mencoba memasang ulang dari berkas yang sudah ada…');
-    await pasangkanDanBuka();
-  } catch (e) {
-    if (!gagalPasangDilaporkan) tanganiGagalPasang(e);
-    gagalPasangDilaporkan = false;
-    const b = $('#btn-unduh');
-    if (b) { b.style.display = 'block'; b.textContent = '↻ Coba pasang lagi'; b.onclick = pasangUlangSaja; }
   }
 }
 
@@ -1255,23 +957,18 @@ function pergi(nama) {
   $('#bilah-t').textContent = j[0];
   $('#bilah-s').textContent = j[1] || '—';
   $('#isi').scrollTop = 0;
+  if ((nama === 'cari' || nama === 'jelajah') && !pustakaAktif()) {
+    const w = nama === 'cari' ? $('#hasil') : $('#daftar-kitab');
+    if (w) w.innerHTML = hintAktifkan();
+    simpanPosisi();
+    return;
+  }
   if (nama === 'cari') {
-    /* Catatan & dokumen sendiri disimpan TERPISAH dari tleserisme.db, jadi
-       layar Cari tetap hidup walau perpustakaan belum tersambung — saringannya
-       tinggal digeser ke "Punya saya" supaya jelas apa yang sedang dicari. */
-    segarkanChipTerkunci();
-    if (!pustakaAktif()) pilihSaringCari('catatan');
-    else if (window.DB && DB.prapanas) DB.prapanas();
-    const w = $('#hasil');
-    if (w && !w.innerHTML.trim()) w.innerHTML = petunjukCari();
+    // panaskan mesin cari diam-diam sambil orangnya belum selesai mengetik
+    if (window.DB && DB.prapanas) DB.prapanas();
     setTimeout(() => $('#q').focus(), 80);
   }
-  if (nama === 'jelajah') {
-    segarkanChipTerkunci();
-    // tanpa perpustakaan, rak yang masih ada isinya cuma "Kitab punyaku"
-    if (!pustakaAktif() && KAT.jenis !== 'milik') pilihDaftarJelajah('milik');
-    gambarJelajah();
-  }
+  if (nama === 'jelajah') gambarJelajah();
   if (nama === 'koleksi') isiKoleksi();
   if (nama === 'atur') isiAtur();
   if (nama === 'beranda') isiBeranda();
@@ -1282,7 +979,14 @@ function pergi(nama) {
    BERANDA
    ============================================================ */
 async function isiBeranda() {
-  if (!pustakaAktif()) return berandaMilikSendiri();
+  if (!pustakaAktif()) {
+    // Perpustakaan belum aktif: Beranda tetap bersih (tanpa kartu ajakan).
+    // Aktivasi ada diam-diam di Pengaturan.
+    const k = $('#kpi'); if (k) k.innerHTML = '';
+    const kf = $('#ket-fan'); if (kf) kf.textContent = '—';
+    const rw = $('#riwayat'); if (rw) rw.innerHTML = '';
+    return;
+  }
   try {
     const i = await DB.info();
     $('#kpi').innerHTML = `
@@ -1311,50 +1015,6 @@ async function isiBeranda() {
         </button>`).join('');
     }
   } catch (e) { console.error(e); }
-}
-
-/* Beranda saat perpustakaan belum tersambung.
-   Sebelumnya layar ini dikosongkan — dan kosong itu terbaca sebagai "aplikasinya
-   rusak", padahal dokumen & catatan sendiri tetap utuh. Jadi angkanya diambil
-   dari milik sendiri, dan yang terakhir disentuh ditampilkan apa adanya. */
-async function berandaMilikSendiri() {
-  let dok = [], cat = [];
-  try { dok = window.DOK ? await DOK.semua() : []; } catch (e) { }
-  try { cat = await DB.catatanSemua(); } catch (e) { }
-
-  const k = $('#kpi');
-  if (k) k.innerHTML = `
-    <div class="kpi acc"><div class="lab">Dokumen saya</div>
-      <div class="val">${angka(dok.length)}</div>
-      <div class="sub">tersimpan di perangkat ini</div></div>
-    <div class="kpi"><div class="lab">Catatan saya</div>
-      <div class="val">${angka(cat.length)}</div>
-      <div class="sub">ikut tercari</div></div>`;
-
-  const kf = $('#ket-fan');
-  if (kf) kf.textContent = 'Rak "Kitab punyaku" · ' + angka(dok.length) + ' berkas';
-
-  const rw = $('#riwayat');
-  if (!rw) return;
-  if (!dok.length && !cat.length) {
-    rw.innerHTML = `<div class="kosong" style="padding:24px">Belum ada apa-apa di sini.<br>
-      Mulai dari <b>Koleksi</b> — masukkan dokumen atau tulis catatan pertamamu.</div>`;
-    return;
-  }
-  rw.innerHTML = dok.slice(0, 4).map(x => `
-      <button class="baris" data-dok="${x.id}">
-        <span class="lencana l-dok">${IKON_DOK[x.jenis] || 'DOC'}</span>
-        <span class="n"><span class="t ${arab(x.judul) ? 'ar' : ''}">${esc(x.judul)}</span>
-          <span class="m">punyaku &middot; ${rapiHuruf(x.huruf)}</span></span>
-        <span style="color:var(--ink3)">›</span>
-      </button>`).join('') +
-    cat.slice(0, 3).map(c => `
-      <button class="baris" data-catatan="${c.id}">
-        <span class="lencana l-catatan">✎</span>
-        <span class="n"><span class="t">${esc(c.judul || '(tanpa judul)')}</span>
-          <span class="m">${esc((c.isi || '').slice(0, 70))}…</span></span>
-        <span style="color:var(--ink3)">›</span>
-      </button>`).join('');
 }
 
 /* ============================================================
@@ -1426,10 +1086,10 @@ let sedangCari = false;
 let cariKotor = false;      // ada permintaan baru selagi yang lama masih jalan
 let sambungCari = null;     // keadaan untuk "tampilkan lebih banyak" (paginasi)
 async function jalankanCari() {
-  /* Perpustakaan belum tersambung bukan alasan untuk mematikan layar Cari.
-     Yang benar-benar butuh tleserisme.db cuma isi & judul kitab; catatan dan
-     dokumen sendiri ada di penyimpanan peramban, jadi tetap bisa dicari. */
-  if (!pustakaAktif() && S.jenisCari !== 'catatan') pilihSaringCari('catatan');
+  if (!pustakaAktif()) {
+    const w = $('#hasil'); if (w) w.innerHTML = hintAktifkan();
+    return;
+  }
   if (sedangCari) { cariKotor = true; return; }
   sedangCari = true;
   cariKotor = false;
@@ -1454,8 +1114,6 @@ async function jalankanCariSekali() {
   w.innerHTML = `<div class="muat"><div class="puter"></div>mencari…</div>`;
 
   try {
-    // tanpa perpustakaan: yang tersisa untuk dicari adalah milik sendiri
-    if (!pustakaAktif()) return tampilPunyaSaya(q, true);
     if (S.jenisCari === 'judul') return tampilJudul(await DB.cariJudul(q), q);
     if (S.jenisCari === 'catatan') return tampilPunyaSaya(q);
 
@@ -1748,29 +1406,19 @@ async function bukaPemilihKitab() {
 /* ============================================================
    DOKUMEN MILIK SENDIRI
    ============================================================ */
-async function tampilPunyaSaya(q, tanpaPustaka) {
+async function tampilPunyaSaya(q) {
   const w = $('#hasil');
   const kata = DB.kataKunci(q);
-  /* Kalau perpustakaan memang belum tersambung, katakan sekali di atas hasil —
-     supaya orang tahu ini pencarian di miliknya sendiri, bukan pencarian yang
-     gagal. */
-  const nota = tanpaPustaka
-    ? `<div class="kosong" style="padding:12px 14px;text-align:left;font-size:12px;
-         line-height:1.75;border:1px dashed var(--line2);border-radius:12px;
-         margin-bottom:11px">Perpustakaan belum aktif — ini hasil dari
-         <b>catatan &amp; dokumenmu sendiri</b>.
-         Aktifkan lewat <b>⚙ Pengaturan</b> untuk ikut mencari isi kitab.</div>`
-    : '';
   let h = '';
   try {
     const dok = window.DOK ? await DOK.cari(q, 30) : [];
     const cat = await DB.catatanCari(q);
     if (!dok.length && !cat.length) {
-      w.innerHTML = nota + `<div class="kosong">Tidak ada catatan atau dokumenmu
+      w.innerHTML = `<div class="kosong">Tidak ada catatan atau dokumenmu
         yang memuat kata itu.</div>`;
       return;
     }
-    h = nota + `<div class="hitung">Ketemu <b>${dok.length}</b> dokumen
+    h = `<div class="hitung">Ketemu <b>${dok.length}</b> dokumen
          dan <b>${cat.length}</b> catatan</div>`;
     h += dok.map(r => kartuDokumen(r, kata)).join('');
     h += cat.map(c => `
@@ -2240,15 +1888,6 @@ async function bukaGrupKitab(kunci) {
 
 /** dipanggil setiap kali layar Jelajah dibuka atau chip diganti */
 async function gambarJelajah() {
-  /* Rak "Kitab punyaku" tidak berasal dari tleserisme.db, jadi tetap terbuka.
-     Rak yang lain memang butuh perpustakaan — di situ baru dipasang petunjuk,
-     dan chip-nya tetap bisa ditekan supaya orang bisa balik ke rak miliknya. */
-  if (!pustakaAktif() && KAT.jenis !== 'milik') {
-    $('#pohon').style.display = 'none';
-    $('#daftar-kitab').style.display = '';
-    $('#daftar-kitab').innerHTML = hintAktifkan();
-    return;
-  }
   const perFan = KAT.jenis === 'fan';
   $('#pohon').style.display = perFan ? '' : 'none';
   $('#daftar-kitab').style.display = perFan ? 'none' : '';
@@ -2503,41 +2142,15 @@ async function isiAtur() {
   $('#s-abaikan .sw').classList.toggle('on', Setel.data.abaikan);
   $('#s-hamzah .sw').classList.toggle('on', Setel.data.hamzah);
   $('#v-besar').textContent = Setel.data.besar + ' pt';
-  const contoh = $('#contoh-besar');
-  if (contoh) contoh.style.fontSize = Setel.data.besar + 'px';
 
   if (!pustakaAktif()) {
     const box = $('#info-db');
     if (box) {
-      if (gagalBukaTerakhir) {
-        /* Ada berkasnya, tapi gagal dibaca. Katakan apa adanya + beri dua jalan:
-           coba baca lagi (kalau cuma pemasangan yang belum kelar, ini langsung
-           beres), atau unduh ulang dari nol (kalau berkasnya memang rusak). */
-        const rusak = /DB_RUSAK|malformed|corrupt/i.test(gagalBukaTerakhir);
-        box.innerHTML = `<div class="set" style="cursor:default;display:block">
-            <div class="n"><div class="t" style="color:var(--bahaya)">Perpustakaan gagal dibaca</div>
-              <div class="s">${rusak
-                ? 'Berkasnya ada, tapi <b>belum lengkap / rusak</b> — biasanya karena unduhan terputus di tengah lalu tersambung salah. Menyambung ulang tidak menambalnya; perlu diunduh ulang dari nol.'
-                : 'Berkasnya ada, tapi belum bisa dibuka. Coba baca lagi dulu — sering kali pemasangannya cuma belum kelar.'}</div>
-              <div class="s" style="margin-top:6px;opacity:.7;word-break:break-word">${esc(gagalBukaTerakhir).slice(0, 160)}</div>
-            </div></div>
-          <div class="set" id="s-perbaiki" style="cursor:pointer">
-            <div class="n"><div class="t">Coba baca lagi / perbaiki</div>
-              <div class="s">Selesaikan pemasangan tanpa mengunduh ulang</div></div>
-            <span class="nilai" style="color:var(--gold)">↻</span></div>
-          <div class="set" id="s-unduh-ulang" style="cursor:pointer">
-            <div class="n"><div class="t">Unduh ulang dari nol</div>
-              <div class="s">Hapus berkas rusak, mulai unduhan bersih</div></div>
-            <span class="nilai" style="color:var(--bahaya)">⭳</span></div>`;
-        const p = $('#s-perbaiki'); if (p) p.onclick = perbaikiPustaka;
-        const u = $('#s-unduh-ulang'); if (u) u.onclick = unduhUlangBersih;
-      } else {
-        box.innerHTML = `<div class="set" id="s-sambung" style="cursor:pointer">
-          <div class="n"><div class="t">Perpustakaan Bahtsul Masail</div>
-            <div class="s">Belum tersambung — ketuk untuk menyambungkan (perlu kata sandi)</div></div>
-          <span class="nilai" style="color:var(--gold)">⚿ Sambungkan ›</span></div>`;
-        const s = $('#s-sambung'); if (s) s.onclick = mintaSandiSambung;
-      }
+      box.innerHTML = `<div class="set" id="s-sambung" style="cursor:pointer">
+        <div class="n"><div class="t">Perpustakaan Bahtsul Masail</div>
+          <div class="s">Belum tersambung — ketuk untuk menyambungkan (perlu kata sandi)</div></div>
+        <span class="nilai" style="color:var(--gold)">⚿ Sambungkan ›</span></div>`;
+      const s = $('#s-sambung'); if (s) s.onclick = mintaSandiSambung;
     }
     return;
   }
@@ -2763,25 +2376,10 @@ function pasangKendali() {
   $('#s-tema').onclick = () => { Setel.data.terang = !Setel.data.terang; Setel.simpan(); isiAtur(); };
   $('#s-abaikan').onclick = () => { Setel.data.abaikan = !Setel.data.abaikan; Setel.simpan(); isiAtur(); };
   $('#s-hamzah').onclick = () => { Setel.data.hamzah = !Setel.data.hamzah; Setel.simpan(); isiAtur(); };
-
-  /* Ukuran huruf Arab: dulu satu baris yang harus diketuk untuk membesar dan
-     balik sendiri sesudah mentok — tidak kelihatan bisa ditekan, dan
-     perubahannya cuma terasa di layar baca, jadi wajar terasa mati. Sekarang
-     ada tombol − / + yang jelas, dengan contoh huruf yang ikut berubah
-     saat itu juga. Ketukan pada barisnya tetap membesarkan, seperti dulu. */
-  const ubahBesar = arah => {
-    let b = Number(Setel.data.besar) || 18;
-    b += arah * 2;
-    if (b > 30) b = 14;
-    if (b < 14) b = 30;
-    Setel.data.besar = b;
-    Setel.simpan();
-    isiAtur();
+  $('#s-besar').onclick = () => {
+    Setel.data.besar += 2; if (Setel.data.besar > 26) Setel.data.besar = 15;
+    Setel.simpan(); isiAtur();
   };
-  const naik = $('#besar-naik'), turun = $('#besar-turun'), barisBesar = $('#s-besar');
-  if (naik) naik.onclick = e => { e.stopPropagation(); ubahBesar(1); };
-  if (turun) turun.onclick = e => { e.stopPropagation(); ubahBesar(-1); };
-  if (barisBesar) barisBesar.onclick = () => ubahBesar(1);
 
   /* --- kotak ketik di Jelajah: menyaring daftar kitab, atau pohon fan --- */
   let jedaKetik = null;

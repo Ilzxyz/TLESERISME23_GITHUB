@@ -273,17 +273,6 @@ const DB = (() => {
     return info;
   }
 
-  /** apakah ada berkas mentah <nama> di folder DATA aplikasi (files/) */
-  async function berkasDATAAda(nama) {
-    try {
-      const st = await FS().stat({ path: nama, directory: 'DATA' });
-      return !!(st && Number(st.size) > 0);
-    } catch (e) { return false; }
-  }
-
-  /* DIKEMBALIKAN ke versi yang DULU jalan. Tanpa cek-keutuhan dan tanpa
-     self-heal — dua tambahan itu yang bikin DB sehat malah ditolak. Persis
-     seperti waktu pemasangan manual berhasil. */
   async function bukaAndroid() {
     const s = SQ();
     const ada = await s.isDatabase({ database: NAMA_DB });
@@ -298,18 +287,6 @@ const DB = (() => {
     cap = s;
     mode = 'android';
     siap = true;
-  }
-
-  /** buang basis data terpasang + berkas mentah/separuh di DATA — untuk
-   *  mengulang dari nol kalau unduhannya ternyata rusak. */
-  async function bersihkanAndroid() {
-    const s = SQ();
-    siap = false; cap = null; mode = null;
-    try { await s.closeConnection({ database: NAMA_DB, readonly: false }); } catch (e) { }
-    try { await s.deleteDatabase({ database: NAMA_DB }); } catch (e) { }
-    for (const n of [NAMA_DB + '.db', 'tleserisme-unduh.db']) {
-      try { await FS().deleteFile({ path: n, directory: 'DATA' }); } catch (e) { }
-    }
   }
 
   /** pindahkan tleserisme.db dari folder data aplikasi ke tempat plugin
@@ -1041,7 +1018,6 @@ const DB = (() => {
     seragam, kataKunci, bukaTeks, diAndroid, catatanIO,
     FS, SQ, MAP,
     bukaPeramban, bukaAndroid, bukaLokal, bukaJauh, pasangDariBerkas, siapkanTabelPengguna,
-    bersihkanAndroid, berkasDATAAda,
     get mode() { return mode; },
     get siap() { return siap; },
     tanya, jalankan, satu,
