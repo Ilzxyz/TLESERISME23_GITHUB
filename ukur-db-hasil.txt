@@ -1,0 +1,31 @@
+============================================================
+BERKAS : D:\Tleserisme For All\pembongkar-baru\pembongkar-baru\tleserisme.db
+UKURAN : 1198.4 MB
+============================================================
+UKURAN BYTE ASLI (akurat, isi kolom):
+     16.2 MB   bab          (254,502 baris)
+      0.0 MB   fan          (15 baris)
+    760.0 MB   halaman      (618,830 baris)
+      0.0 MB   info         (9 baris)
+    151.3 MB   kata         (1,412,378 baris)
+      0.2 MB   kitab        (1,381 baris)
+      0.0 MB   sqlite_sequence (2 baris)
+  ----------------------------------------
+    927.7 MB   TOTAL isi kolom (di luar overhead B-tree)
+------------------------------------------------------------
+FORMAT PENYIMPANAN:
+  halaman.teks : TEKS base64(zlib)
+                 contoh 40 huruf: 'eJzFUlFOg0AQPcHeYQ9Qa/z1KsbDUFlAbqFVoSjF'
+                 4 byte awal setelah decode: 789cc552
+  total byte halaman.teks : 749.8 MB
+  -> kalau disimpan BLOB (bukan base64): hemat ~187.5 MB (sisa ~562.4 MB)
+  kata.p       : BLOB biner   (total tabel kata ~160.3 MB)
+  -> index 'kata' bisa DIBUANG dari unduhan, dibangun ulang di HP
+------------------------------------------------------------
+  baris kitab   : 1,381
+  baris halaman : 618,830
+  baris fan     : 15
+  baris kata    : 1,412,378
+  baris bab     : 254,502
+============================================================
+Selesai. Hasil tersimpan di ukur-db-hasil.txt

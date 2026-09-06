@@ -951,6 +951,127 @@ async function siapPasangAndroid() {
   }
 }
 
+/* ---------- verifikasi potongan (anti-korup) ----------
+   Tiap potongan dicek sidik jari SHA-256-nya SEBELUM ditulis ke berkas.
+   Manifest (daftar sidik jari per potongan) diambil dari alamat yang sama
+   + ".manifest.json". Kalau manifestnya belum diunggah, unduhan tetap jalan
+   dengan cara lama (tanpa verifikasi) — jadi ini aman dipasang duluan. */
+function b64KeBytes(b64) {
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return arr;
+}
+async function sidikJari(bytes) {
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(buf))
+    .map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function ambilManifest(url) {
+  try {
+    const r = await HTTP().request({
+      method: 'GET', url: url + '.manifest.json', responseType: 'text',
+      connectTimeout: 30000, readTimeout: 30000
+    });
+    if (r.status !== 200 && r.status !== 206) return null;
+    let data = r.data;
+    // CapacitorHttp kadang mem-base64-kan teks; coba kenali JSON-nya
+    if (typeof data === 'string' && data.trim()[0] !== '{') {
+      try { data = atob(data); } catch (e) { }
+    }
+    const m = (typeof data === 'string') ? JSON.parse(data) : data;
+    if (m && m.potong && Array.isArray(m.sha) && m.ukuran) return m;
+  } catch (e) { }
+  return null;
+}
+
+/** unduh dengan verifikasi per-potongan (butuh manifest + crypto.subtle) */
+async function unduhTerverifikasi(url, man) {
+  const Filesystem = DB.FS();
+  const potong = man.potong, total = man.ukuran, N = man.sha.length;
+
+  // lanjut dari potongan terverifikasi terakhir. Karena kita hanya MENULIS
+  // sesudah verifikasi, ukuran berkas selalu kelipatan potong yang utuh.
+  let sudahByte = 0;
+  try { sudahByte = await ukuranParsial(); } catch (e) { }
+  let i = Math.floor(sudahByte / potong);
+  if (sudahByte % potong !== 0 || i > N) {   // berkas ganjil → mulai bersih
+    try { await Filesystem.deleteFile({ path: NAMA_UNDUH, directory: 'DATA' }); } catch (e) { }
+    i = 0;
+  }
+
+  const t0 = Date.now(), iAwal = i;
+  let akhirLapor = 0;
+
+  while (i < N) {
+    if (unduhBerhenti) {
+      laporPasang('Unduhan dijeda di ' + rapiUkuran(i * potong) + ' / ' + rapiUkuran(total) +
+        '.<br>Tekan <b>Lanjutkan unduhan</b> kapan pun — potongan yang sudah benar tidak diulang.');
+      siapkanTombolUnduh(false, true);
+      return;
+    }
+
+    const mulai = i * potong;
+    const end = Math.min(mulai + potong, total) - 1;
+
+    // sampai 3 kali coba untuk SATU potongan; salah sidik jari = ambil lagi
+    let b64 = null, cocok = false, galatChunk = '';
+    for (let coba = 0; coba < 3 && !cocok; coba++) {
+      try {
+        const r = await HTTP().request({
+          method: 'GET', url, headers: { Range: 'bytes=' + mulai + '-' + end },
+          responseType: 'blob', connectTimeout: 30000, readTimeout: 120000
+        });
+        if (r.status !== 206 && r.status !== 200) { galatChunk = 'server menjawab ' + r.status; continue; }
+        b64 = r.data;
+        if (!b64) { galatChunk = 'potongan kosong'; continue; }
+        const sj = await sidikJari(b64KeBytes(b64));
+        if (sj === man.sha[i]) { cocok = true; }
+        else { galatChunk = 'sidik jari tak cocok (potongan ' + (i + 1) + ')'; b64 = null; }
+      } catch (e) {
+        galatChunk = (e && (e.message || e.errorMessage)) || String(e);
+      }
+    }
+
+    if (!cocok) {
+      // berhenti tanpa menulis yang salah; potongan benar sebelumnya tetap aman
+      laporPasang('Potongan ' + (i + 1) + '/' + N + ' gagal diverifikasi (' +
+        esc(galatChunk) + ').<br><br>Tekan <b>Lanjutkan unduhan</b> untuk mencoba lagi — ' +
+        'yang sudah benar (' + rapiUkuran(i * potong) + ') tidak diulang.', 'var(--bahaya)');
+      siapkanTombolUnduh(false, true);
+      return;
+    }
+
+    if (i === 0) await Filesystem.writeFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
+    else await Filesystem.appendFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
+    i++;
+
+    const skr = Date.now();
+    if (skr - akhirLapor > 500 || i >= N) {
+      akhirLapor = skr;
+      const sudah = Math.min(i * potong, total);
+      const persen = (sudah / total) * 100;
+      const detik = (skr - t0) / 1000;
+      const laju = detik > 1 ? ((i - iAwal) * potong) / detik : 0;
+      const sisa = laju > 0 ? Math.round((total - sudah) / laju / 60) : null;
+      laporPasang('Mengunduh <b>' + persen.toFixed(1) + '%</b> (' +
+        rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ') · ✓ terverifikasi' +
+        (laju > 0 ? ' · ' + rapiUkuran(laju) + '/dtk' : '') +
+        (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
+        '<br><span style="font-size:11px;opacity:.8;line-height:1.9">Sinyal putus? Aman — ' +
+        'tiap potongan dicek dulu, yang benar tersimpan permanen. Tekan lanjut kapan pun.</span>');
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  laporPasang('Unduhan selesai &amp; terverifikasi — memasang…');
+  try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
+  await Filesystem.rename({
+    from: NAMA_UNDUH, to: NAMA_BERKAS, directory: 'DATA', toDirectory: 'DATA'
+  });
+  await pasangkanDanBuka();
+}
+
 /** unduh berkas penuh, sepotong-sepotong, lalu pasang */
 async function unduhDanPasang() {
   const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
@@ -964,6 +1085,15 @@ async function unduhDanPasang() {
 
   try {
     laporPasang('Menyiapkan unduhan…');
+
+    /* Utamakan unduhan TERVERIFIKASI kalau manifest & crypto tersedia.
+       Kalau tidak, jatuh ke cara lama supaya tetap jalan. */
+    const adaKripto = !!(window.crypto && crypto.subtle && crypto.subtle.digest);
+    if (adaKripto) {
+      const man = await ambilManifest(url);
+      if (man) { await unduhTerverifikasi(url, man); return; }
+    }
+
     const total = await ukuranTotalServer(url);
     let sudah = await ukuranParsial();
     if (sudah > total) {                       // berkas separuh rusak/beda → mulai ulang
