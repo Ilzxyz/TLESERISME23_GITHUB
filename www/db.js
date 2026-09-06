@@ -281,23 +281,13 @@ const DB = (() => {
     } catch (e) { return false; }
   }
 
+  /* DIKEMBALIKAN ke versi yang DULU jalan. Tanpa cek-keutuhan dan tanpa
+     self-heal — dua tambahan itu yang bikin DB sehat malah ditolak. Persis
+     seperti waktu pemasangan manual berhasil. */
   async function bukaAndroid() {
     const s = SQ();
-    let ada = await s.isDatabase({ database: NAMA_DB });
-
-    /* Berkas mungkin sudah SELESAI diunduh ke DATA (tleserisme.db) tapi belum
-       sempat "dipasang" (dipindah ke tempat mesin) — misal aplikasi tertutup
-       tepat di langkah memasang. Kalau begitu, selesaikan sekarang. Jauh lebih
-       baik daripada menyuruh orang mengunduh ulang 1,3 GB. */
-    if ((!ada || !ada.result) && await berkasDATAAda(NAMA_DB + '.db')) {
-      try {
-        await pasangDariBerkas(NAMA_DB + '.db');
-        ada = await s.isDatabase({ database: NAMA_DB });
-      } catch (e) { /* biar jatuh ke BELUM_ADA_DB di bawah */ }
-    }
-
+    const ada = await s.isDatabase({ database: NAMA_DB });
     if (!ada || !ada.result) throw new Error('BELUM_ADA_DB');
-
     try {
       await s.createConnection({
         database: NAMA_DB, version: 1, encrypted: false,
@@ -308,30 +298,6 @@ const DB = (() => {
     cap = s;
     mode = 'android';
     siap = true;
-
-    /* Cek keutuhan RINGAN. Dulu kesalahan APA PUN di sini dianggap "rusak" dan
-       menolak DB — padahal kueri bisa gagal karena hal sepele di jembatan
-       Android, sehingga DB yang SEHAT ikut ditolak dan perpustakaan tak pernah
-       nyala. Sekarang: kalau kueri sukses -> jelas sehat. Kalau kueri GAGAL,
-       kita HANYA menyatakan rusak bila pesannya memang ciri berkas korup
-       (malformed / not a database / disk image). Selain itu: biarkan terbuka —
-       kueri asli pertama (DB.info) akan menunjukkan sendiri kalau memang rusak. */
-    try {
-      await s.query({
-        database: NAMA_DB,
-        statement: 'SELECT count(*) FROM sqlite_master'
-      });
-    } catch (e) {
-      const pesan = String((e && (e.message || e.errorMessage)) || e);
-      if (/malformed|not a database|disk image|corrupt|file is encrypted/i.test(pesan)) {
-        siap = false; cap = null; mode = null;
-        const err = new Error('DB_RUSAK: ' + pesan);
-        err.rusak = true;
-        throw err;
-      }
-      // error lain -> jangan brick DB yang mungkin sehat
-      console.warn('cek keutuhan dilewati (bukan tanda korup):', pesan);
-    }
   }
 
   /** buang basis data terpasang + berkas mentah/separuh di DATA — untuk

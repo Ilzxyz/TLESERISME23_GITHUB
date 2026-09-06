@@ -807,16 +807,51 @@ async function salinDariPilihan(berkas) {
   }
 }
 
-/** langkah terakhir: pindahkan ke tempat mesin basis data, lalu buka */
+/** langkah terakhir: pindahkan ke tempat mesin basis data, lalu buka.
+   Tiap langkah dilaporkan; kalau gagal, tampilkan jejak lengkap supaya
+   ketahuan PERSIS mati di mana — bukan "gagal" tanpa keterangan. */
 async function pasangkanDanBuka() {
-  laporPasang('Memasang…');
-  await DB.pasangDariBerkas(NAMA_BERKAS);
-  laporPasang('Membuka perpustakaan…');
-  await DB.bukaAndroid();
-  await lanjutJalan();
+  const jejak = [];
+  const lapor = (t) => { jejak.push(t); laporPasang(jejak.join('<br>')); };
+  try {
+    lapor('1/4 · Memindahkan berkas ke mesin basis data…');
+    await DB.pasangDariBerkas(NAMA_BERKAS);
+    lapor('2/4 · Berkas terpasang ✓');
+
+    lapor('3/4 · Membuka perpustakaan…');
+    await DB.bukaAndroid();
+    lapor('4/4 · Terbuka ✓ — menyiapkan tampilan…');
+
+    await lanjutJalan();
+  } catch (e) {
+    const m = (e && (e.message || e.errorMessage)) || String(e);
+    // kumpulkan bukti supaya bisa didiagnosis dari satu layar
+    let bukti = '';
+    try {
+      const C = window.Capacitor;
+      const plug = (C && C.Plugins) ? Object.keys(C.Plugins).join(', ') : '(kosong)';
+      let ada = '?';
+      try { const r = await DB.SQ().isDatabase({ database: 'tleserisme' }); ada = JSON.stringify(r); } catch (x) { ada = 'err:' + (x.message || x); }
+      let stat = '?';
+      try { const s = await DB.FS().stat({ path: NAMA_BERKAS, directory: 'DATA' }); stat = rapiUkuran(s.size); } catch (x) { stat = 'tidak ada di DATA'; }
+      bukti = '<br><br><span style="font-size:11px;line-height:1.9;opacity:.85">' +
+        'GAGAL DI: ' + esc(m) + '<br>' +
+        'isDatabase: ' + esc(ada) + '<br>' +
+        'tleserisme.db di DATA: ' + esc(stat) + '<br>' +
+        'colokan: ' + esc(plug) + '</span>';
+    } catch (x2) { }
+    laporPasang(jejak.join('<br>') +
+      '<br><br><b style="color:var(--bahaya)">Berhenti.</b>' + bukti +
+      '<br><br>Screenshot layar ini — dari sini ketahuan persis salahnya.',
+      'var(--bahaya)');
+    gagalPasangDilaporkan = true;   // jangan sampai pesan luar menimpa jejak ini
+    throw e;   // biar pemanggil (unduh/pilih) tetap tahu gagal
+  }
 }
+let gagalPasangDilaporkan = false;
 
 function tanganiGagalPasang(e) {
+  if (gagalPasangDilaporkan) { gagalPasangDilaporkan = false; return; }  // jejak detail sudah tampil
   const m = (e && (e.message || e.errorMessage)) || String(e);
   let saran = '';
   if (/space|ENOSPC|penuh|full/i.test(m)) {
@@ -1157,24 +1192,39 @@ async function unduhDanPasang() {
   } catch (e) {
     const m = (e && (e.message || e.errorMessage)) || String(e);
 
-    /* Berkas selesai diunduh tapi ternyata rusak (potongan tak sejajar).
-       Melanjutkan unduhan tidak menambalnya — harus dari nol. */
-    if (/DB_RUSAK|malformed|corrupt/i.test(m)) {
-      laporPasang('Unduhannya selesai, tapi berkasnya <b>rusak / belum lengkap</b> — ' +
-        'biasanya karena sinyal putus-nyambung di tengah jalan.<br><br>' +
-        'Menyambung tidak bisa menambalnya. Tekan tombol di bawah untuk ' +
-        '<b>mengunduh ulang dari nol</b>.', 'var(--bahaya)');
-      try { await DB.bersihkanAndroid(); } catch (e2) { }
+    /* Kalau yang gagal itu langkah MEMASANG (bukan mengunduh), pasangkanDanBuka
+       sudah menampilkan jejak lengkapnya — JANGAN ditimpa. Berkas unduhan TIDAK
+       dihapus (auto-hapus dulu yang bikin muter tak berujung). Tombolnya diarahkan
+       untuk mencoba PASANG lagi tanpa mengunduh ulang. */
+    if (gagalPasangDilaporkan) {
+      gagalPasangDilaporkan = false;
       const b = $('#btn-unduh');
-      if (b) { b.style.display = 'block'; b.textContent = '⭳ Unduh ulang dari nol'; b.onclick = unduhDanPasang; }
+      if (b) { b.style.display = 'block'; b.textContent = '↻ Coba pasang lagi'; b.onclick = pasangUlangSaja; }
       return;
     }
 
-    laporPasang('Unduhan terhenti: ' + m +
+    // murni gagal di transport unduhan -> lanjutkan dari potongan terakhir
+    laporPasang('Unduhan terhenti: ' + esc(m) +
       '<br><br>Tekan <b>Lanjutkan unduhan</b> untuk nyambung dari potongan terakhir.',
       'var(--bahaya)');
     let parsial = 0; try { parsial = await ukuranParsial(); } catch (e2) { }
     siapkanTombolUnduh(false, parsial > 0);
+  }
+}
+
+/** coba pasang lagi dari berkas yang SUDAH terunduh (tanpa unduh ulang) */
+async function pasangUlangSaja() {
+  const Filesystem = DB.FS();
+  try {
+    // kalau berkas mentah masih ada di DATA, pasang; kalau sudah dipindah ke
+    // mesin, bukaAndroid akan menemukannya sendiri.
+    laporPasang('Mencoba memasang ulang dari berkas yang sudah ada…');
+    await pasangkanDanBuka();
+  } catch (e) {
+    if (!gagalPasangDilaporkan) tanganiGagalPasang(e);
+    gagalPasangDilaporkan = false;
+    const b = $('#btn-unduh');
+    if (b) { b.style.display = 'block'; b.textContent = '↻ Coba pasang lagi'; b.onclick = pasangUlangSaja; }
   }
 }
 
