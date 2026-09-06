@@ -104,6 +104,44 @@ function mintaSandiSambung() {
   tampilGerbang();
 }
 
+/* Tombol "Coba baca lagi / perbaiki" di Pengaturan. Menjalankan bukaAndroid
+   lagi — yang sekarang bisa menyelesaikan pemasangan yang belum kelar sendiri.
+   Kalau berkasnya memang rusak, pesannya diperbarui apa adanya. */
+async function perbaikiPustaka() {
+  const box = $('#info-db');
+  if (box) box.innerHTML = `<div class="muat"><div class="puter"></div>mencoba membaca lagi…</div>`;
+  try {
+    await DB.bukaAndroid();
+    gagalBukaTerakhir = '';
+    await DB.siapkanTabelPengguna();
+    await segarkanPustaka();
+  } catch (e) {
+    const msg = String((e && (e.message || e)) || '');
+    gagalBukaTerakhir = (msg.indexOf('BELUM_ADA_DB') >= 0)
+      ? '' : msg;
+    if (msg.indexOf('BELUM_ADA_DB') >= 0) {
+      // ternyata tidak ada berkas sama sekali -> arahkan ke pemasangan
+      if (DB.diAndroid()) { tampilPasang(); siapPasangAndroid(); }
+      else mintaSandiSambung();
+      return;
+    }
+    isiAtur();   // gambar ulang kartu galat dengan pesan terbaru
+  }
+}
+
+/* Tombol "Unduh ulang dari nol". Berkas yang rusak tidak bisa ditambal dengan
+   melanjutkan unduhan — potongannya sudah tak sejajar. Jadi dibuang bersih,
+   lalu layar unduh dibuka lagi dari awal. */
+async function unduhUlangBersih() {
+  if (!confirm('Hapus berkas perpustakaan yang rusak lalu mulai unduhan dari nol?\n\n' +
+    'Yang terunduh sebelumnya (yang rusak) akan dibuang. Catatan & dokumen pribadimu tidak terpengaruh.')) return;
+  try { await DB.bersihkanAndroid(); } catch (e) { }
+  gagalBukaTerakhir = '';
+  tampilPasang();
+  siapPasangAndroid();
+  laporPasang('Berkas lama sudah dibuang. Tekan <b>Unduh perpustakaan</b> untuk mulai dari nol.');
+}
+
 /* ---------- MULAI: selalu masuk aplikasi dulu (tanpa tembok) ---------- */
 async function mulai() {
   Setel.muat();
@@ -119,13 +157,25 @@ async function mulai() {
                diam saja — pengguna mengaktifkannya lewat Pengaturan.
    - Web/desktop : DB dibaca dari server (bisa terpapar publik), jadi TETAP
                    butuh buka-kunci (sandi) dulu sebelum tersambung. */
+/* Alasan gagal terakhir membuka perpustakaan — supaya layar Cari/Jelajah dan
+   Pengaturan bisa memberi tahu APA yang salah, bukan cuma "belum aktif". */
+let gagalBukaTerakhir = '';
+
 async function sambungOtomatis() {
   if (DB.diAndroid()) {
     try {
       await DB.bukaAndroid();
+      gagalBukaTerakhir = '';
       await DB.siapkanTabelPengguna();
       await segarkanPustaka();
-    } catch (e) { /* DB belum ada -> diam; aktifkan lewat Pengaturan */ }
+    } catch (e) {
+      const msg = String((e && (e.message || e)) || '');
+      /* "BELUM_ADA_DB" = memang belum diunduh -> wajar, diam saja (aktifkan
+         lewat Pengaturan). Selain itu (mis. berkas rusak/terpotong) JANGAN
+         diam — simpan alasannya supaya bisa ditampilkan & ditindaklanjuti. */
+      gagalBukaTerakhir = (msg.indexOf('BELUM_ADA_DB') >= 0) ? '' : msg;
+      try { await DB.siapkanTabelPengguna(); } catch (e2) { }
+    }
   } else if (sudahTerbuka()) {
     const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
     if (alamat) {
@@ -188,6 +238,17 @@ async function segarkanPustaka() {
 /* petunjuk halus untuk layar Cari/Jelajah saat perpustakaan belum aktif —
    tanpa tombol mencolok; aktivasi ada di Pengaturan. */
 function hintAktifkan() {
+  if (gagalBukaTerakhir) {
+    const rusak = /DB_RUSAK|malformed|corrupt/i.test(gagalBukaTerakhir);
+    return `<div class="kosong" style="padding:30px 22px;line-height:1.95">
+      <b style="color:var(--bahaya)">Perpustakaan gagal dibaca.</b><br>
+      ${rusak
+        ? 'Berkasnya sepertinya belum lengkap / rusak (unduhan terputus).'
+        : 'Berkasnya ada tapi belum bisa dibuka.'}<br>
+      Buka <b>⚙ Pengaturan → Basis data</b> untuk memperbaiki${rusak ? ' / mengunduh ulang' : ''}.
+      <div style="margin-top:14px;font-size:12px;opacity:.85">
+        Catatan &amp; dokumenmu sendiri tetap bisa dipakai.</div></div>`;
+  }
   return `<div class="kosong" style="padding:30px 22px;line-height:1.95">
     Perpustakaan belum aktif.<br>
     Aktifkan dulu lewat <b>⚙ Pengaturan → Sambungkan perpustakaan</b>.
@@ -965,6 +1026,20 @@ async function unduhDanPasang() {
     await pasangkanDanBuka();
   } catch (e) {
     const m = (e && (e.message || e.errorMessage)) || String(e);
+
+    /* Berkas selesai diunduh tapi ternyata rusak (potongan tak sejajar).
+       Melanjutkan unduhan tidak menambalnya — harus dari nol. */
+    if (/DB_RUSAK|malformed|corrupt/i.test(m)) {
+      laporPasang('Unduhannya selesai, tapi berkasnya <b>rusak / belum lengkap</b> — ' +
+        'biasanya karena sinyal putus-nyambung di tengah jalan.<br><br>' +
+        'Menyambung tidak bisa menambalnya. Tekan tombol di bawah untuk ' +
+        '<b>mengunduh ulang dari nol</b>.', 'var(--bahaya)');
+      try { await DB.bersihkanAndroid(); } catch (e2) { }
+      const b = $('#btn-unduh');
+      if (b) { b.style.display = 'block'; b.textContent = '⭳ Unduh ulang dari nol'; b.onclick = unduhDanPasang; }
+      return;
+    }
+
     laporPasang('Unduhan terhenti: ' + m +
       '<br><br>Tekan <b>Lanjutkan unduhan</b> untuk nyambung dari potongan terakhir.',
       'var(--bahaya)');
@@ -2254,11 +2329,35 @@ async function isiAtur() {
   if (!pustakaAktif()) {
     const box = $('#info-db');
     if (box) {
-      box.innerHTML = `<div class="set" id="s-sambung" style="cursor:pointer">
-        <div class="n"><div class="t">Perpustakaan Bahtsul Masail</div>
-          <div class="s">Belum tersambung — ketuk untuk menyambungkan (perlu kata sandi)</div></div>
-        <span class="nilai" style="color:var(--gold)">⚿ Sambungkan ›</span></div>`;
-      const s = $('#s-sambung'); if (s) s.onclick = mintaSandiSambung;
+      if (gagalBukaTerakhir) {
+        /* Ada berkasnya, tapi gagal dibaca. Katakan apa adanya + beri dua jalan:
+           coba baca lagi (kalau cuma pemasangan yang belum kelar, ini langsung
+           beres), atau unduh ulang dari nol (kalau berkasnya memang rusak). */
+        const rusak = /DB_RUSAK|malformed|corrupt/i.test(gagalBukaTerakhir);
+        box.innerHTML = `<div class="set" style="cursor:default;display:block">
+            <div class="n"><div class="t" style="color:var(--bahaya)">Perpustakaan gagal dibaca</div>
+              <div class="s">${rusak
+                ? 'Berkasnya ada, tapi <b>belum lengkap / rusak</b> — biasanya karena unduhan terputus di tengah lalu tersambung salah. Menyambung ulang tidak menambalnya; perlu diunduh ulang dari nol.'
+                : 'Berkasnya ada, tapi belum bisa dibuka. Coba baca lagi dulu — sering kali pemasangannya cuma belum kelar.'}</div>
+              <div class="s" style="margin-top:6px;opacity:.7;word-break:break-word">${esc(gagalBukaTerakhir).slice(0, 160)}</div>
+            </div></div>
+          <div class="set" id="s-perbaiki" style="cursor:pointer">
+            <div class="n"><div class="t">Coba baca lagi / perbaiki</div>
+              <div class="s">Selesaikan pemasangan tanpa mengunduh ulang</div></div>
+            <span class="nilai" style="color:var(--gold)">↻</span></div>
+          <div class="set" id="s-unduh-ulang" style="cursor:pointer">
+            <div class="n"><div class="t">Unduh ulang dari nol</div>
+              <div class="s">Hapus berkas rusak, mulai unduhan bersih</div></div>
+            <span class="nilai" style="color:var(--bahaya)">⭳</span></div>`;
+        const p = $('#s-perbaiki'); if (p) p.onclick = perbaikiPustaka;
+        const u = $('#s-unduh-ulang'); if (u) u.onclick = unduhUlangBersih;
+      } else {
+        box.innerHTML = `<div class="set" id="s-sambung" style="cursor:pointer">
+          <div class="n"><div class="t">Perpustakaan Bahtsul Masail</div>
+            <div class="s">Belum tersambung — ketuk untuk menyambungkan (perlu kata sandi)</div></div>
+          <span class="nilai" style="color:var(--gold)">⚿ Sambungkan ›</span></div>`;
+        const s = $('#s-sambung'); if (s) s.onclick = mintaSandiSambung;
+      }
     }
     return;
   }

@@ -92,6 +92,11 @@ body.terang{ --d3-sh: hsla(var(--h,150) 35% 30% / .22); }
     inset 0 -10px 16px -10px rgba(0,0,0,.5);
 }
 
+/* Pelat berikon lebih lebar dari kotak tulisan yang dulu, jadi judul dan
+   keterangan baris dipisah ke barisnya masing-masing — kalau dibiarkan
+   mengalir, keterangannya patah di tengah kalimat. */
+.baris .n .t,.baris .n .m{display:block}
+
 /* pelat versi kecil untuk baris daftar kitab (.tanda) */
 .d3-pelat.kecil{width:34px;height:34px;border-radius:11px}
 .d3-pelat.kecil > svg{width:70%;height:70%}

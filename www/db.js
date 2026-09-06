@@ -273,10 +273,31 @@ const DB = (() => {
     return info;
   }
 
+  /** apakah ada berkas mentah <nama> di folder DATA aplikasi (files/) */
+  async function berkasDATAAda(nama) {
+    try {
+      const st = await FS().stat({ path: nama, directory: 'DATA' });
+      return !!(st && Number(st.size) > 0);
+    } catch (e) { return false; }
+  }
+
   async function bukaAndroid() {
     const s = SQ();
-    const ada = await s.isDatabase({ database: NAMA_DB });
+    let ada = await s.isDatabase({ database: NAMA_DB });
+
+    /* Berkas mungkin sudah SELESAI diunduh ke DATA (tleserisme.db) tapi belum
+       sempat "dipasang" (dipindah ke tempat mesin) — misal aplikasi tertutup
+       tepat di langkah memasang. Kalau begitu, selesaikan sekarang. Jauh lebih
+       baik daripada menyuruh orang mengunduh ulang 1,3 GB. */
+    if ((!ada || !ada.result) && await berkasDATAAda(NAMA_DB + '.db')) {
+      try {
+        await pasangDariBerkas(NAMA_DB + '.db');
+        ada = await s.isDatabase({ database: NAMA_DB });
+      } catch (e) { /* biar jatuh ke BELUM_ADA_DB di bawah */ }
+    }
+
     if (!ada || !ada.result) throw new Error('BELUM_ADA_DB');
+
     try {
       await s.createConnection({
         database: NAMA_DB, version: 1, encrypted: false,
@@ -287,6 +308,36 @@ const DB = (() => {
     cap = s;
     mode = 'android';
     siap = true;
+
+    /* Berkas yang terpotong / rusak (unduhan putus di tengah lalu ditambal
+       salah) tetap lolos open() — tapi meledak di kueri PERTAMA dengan
+       "database disk image is malformed". Diperiksa di sini, sekali, dengan
+       kueri paling murah, supaya pesannya jelas dan bisa ditindaklanjuti —
+       bukan layar yang diam-diam kosong. */
+    try {
+      await s.query({
+        database: NAMA_DB,
+        statement: 'SELECT count(*) FROM sqlite_master', values: []
+      });
+    } catch (e) {
+      siap = false; cap = null; mode = null;
+      const pesan = String((e && (e.message || e.errorMessage)) || e);
+      const err = new Error('DB_RUSAK: ' + pesan);
+      err.rusak = true;
+      throw err;
+    }
+  }
+
+  /** buang basis data terpasang + berkas mentah/separuh di DATA — untuk
+   *  mengulang dari nol kalau unduhannya ternyata rusak. */
+  async function bersihkanAndroid() {
+    const s = SQ();
+    siap = false; cap = null; mode = null;
+    try { await s.closeConnection({ database: NAMA_DB, readonly: false }); } catch (e) { }
+    try { await s.deleteDatabase({ database: NAMA_DB }); } catch (e) { }
+    for (const n of [NAMA_DB + '.db', 'tleserisme-unduh.db']) {
+      try { await FS().deleteFile({ path: n, directory: 'DATA' }); } catch (e) { }
+    }
   }
 
   /** pindahkan tleserisme.db dari folder data aplikasi ke tempat plugin
@@ -1018,6 +1069,7 @@ const DB = (() => {
     seragam, kataKunci, bukaTeks, diAndroid, catatanIO,
     FS, SQ, MAP,
     bukaPeramban, bukaAndroid, bukaLokal, bukaJauh, pasangDariBerkas, siapkanTabelPengguna,
+    bersihkanAndroid, berkasDATAAda,
     get mode() { return mode; },
     get siap() { return siap; },
     tanya, jalankan, satu,
