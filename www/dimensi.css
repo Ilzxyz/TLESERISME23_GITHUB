@@ -1,0 +1,273 @@
+/* ============================================================
+   TLeserisme23 — LAPISAN KEDALAMAN (3D)
+   Dimuat PALING AKHIR. Tidak menyentuh logika apa pun.
+
+   ATURAN KERAS: layar BACA tidak ikut.
+   Tidak ada satu pun pemilih di berkas ini yang menyentuh
+   #nass, #baca-kepala, .alat, .pager, atau apa pun di dalam
+   [data-layar="baca"]. Bacaannya sudah pas — biarkan.
+   ============================================================ */
+
+:root{
+  --d3-p: 900px;                                  /* jarak pandang */
+  --d3-e: cubic-bezier(.22,.68,.32,1);
+  --d3-sh: hsla(var(--h,150) 45% 6% / .45);
+}
+body.terang{ --d3-sh: hsla(var(--h,150) 35% 30% / .22); }
+
+/* ============================================================
+   1. KARTU BERKEDALAMAN
+   Miring mengikuti kursor / jari, dengan kilau yang ikut pindah.
+   Dipasang lewat dimensi.js — kelasnya tidak pernah menempel
+   pada apa pun di dalam layar baca.
+   ============================================================ */
+.d3-kartu{
+  position:relative;
+  transform:
+    perspective(var(--d3-p))
+    rotateX(var(--d3-rx,0deg))
+    rotateY(var(--d3-ry,0deg))
+    translateZ(var(--d3-tz,0px));
+  transition:transform .38s var(--d3-e), box-shadow .38s var(--d3-e);
+  will-change:transform;
+}
+.d3-kartu::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(240px circle at var(--d3-mx,50%) var(--d3-my,50%),
+             rgba(255,255,255,.20), transparent 62%);
+  opacity:0;transition:opacity .3s var(--d3-e);
+}
+.d3-kartu.d3-hot{
+  box-shadow:
+    0 22px 40px -22px var(--d3-sh),
+    0 4px 12px -6px var(--d3-sh);
+}
+.d3-kartu.d3-hot::after{opacity:1}
+.d3-kartu:active{
+  transform:perspective(var(--d3-p)) translateZ(-9px) scale(.986);
+  transition-duration:.12s;
+}
+
+/* ============================================================
+   2. PELAT IKON 3D
+   Pengganti kotak bertulisan CARI / FAN / TULIS. Pelatnya
+   punya tepi atas terang & bawah gelap (bevel), ikonnya
+   melayang di atas pelat.
+   ============================================================ */
+.d3-pelat{
+  position:relative;flex:none;
+  width:46px;height:46px;border-radius:15px;
+  display:grid;place-items:center;
+  perspective:460px;
+  background:linear-gradient(148deg,var(--d3-c1),var(--d3-c2));
+  box-shadow:
+    0 12px 20px -12px var(--d3-c3),
+    inset 0 1.5px 0 rgba(255,255,255,.45),
+    inset 0 -10px 16px -10px rgba(0,0,0,.5);
+  transition:transform .45s var(--d3-e), box-shadow .45s var(--d3-e);
+  transform-style:preserve-3d;
+  overflow:visible;
+  /* penting: pelat menimpa gaya .lencana lama dari app.css */
+  border:0;
+}
+.d3-pelat::before{                                 /* kilau melintang */
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.34),transparent 46%);
+}
+.d3-pelat > svg{
+  width:66%;height:66%;display:block;overflow:visible;
+  transform:translateZ(16px);
+  filter:drop-shadow(0 4px 6px rgba(0,0,0,.4));
+  animation:d3-apung 6.5s ease-in-out infinite;
+}
+@keyframes d3-apung{
+  0%,100%{transform:translateZ(16px) rotateY(-13deg) rotateX(7deg) translateY(0)}
+  50%    {transform:translateZ(16px) rotateY( 10deg) rotateX(4deg) translateY(-2.5px)}
+}
+.d3-kartu.d3-hot .d3-pelat{
+  transform:translateZ(26px) rotateY(-13deg) rotateX(9deg);
+  box-shadow:
+    0 20px 28px -14px var(--d3-c3),
+    inset 0 1.5px 0 rgba(255,255,255,.5),
+    inset 0 -10px 16px -10px rgba(0,0,0,.5);
+}
+
+/* pelat versi kecil untuk baris daftar kitab (.tanda) */
+.d3-pelat.kecil{width:34px;height:34px;border-radius:11px}
+.d3-pelat.kecil > svg{width:70%;height:70%}
+
+/* pelat yang tetap memakai tulisan (PDF / TXT / BM / كتاب):
+   keterangannya berguna, jadi yang ditambah cuma tepian timbulnya */
+.d3-pelat.teks{
+  font-size:10px;font-weight:800;letter-spacing:.02em;color:#fff;
+  text-shadow:0 1px 2px rgba(0,0,0,.5);
+}
+.d3-pelat.teks.ar{font-family:var(--ar);font-size:12.5px;font-weight:700}
+
+/* warna pelat menurut jenisnya — semuanya diturunkan dari warna induk --h,
+   jadi ikut berubah saat pengguna mengganti tema warna di Pengaturan */
+.d3-pelat.p-cari   { --d3-c1:hsl(var(--h) 62% 56%); --d3-c2:hsl(var(--h) 68% 34%); --d3-c3:hsla(var(--h) 62% 30%/.85) }
+.d3-pelat.p-fan    { --d3-c1:hsl(var(--h2) 60% 58%);--d3-c2:hsl(var(--h2) 66% 36%);--d3-c3:hsla(var(--h2) 60% 30%/.85) }
+.d3-pelat.p-tulis  { --d3-c1:hsl(var(--h) 52% 62%); --d3-c2:hsl(var(--h2) 58% 38%);--d3-c3:hsla(var(--h) 52% 30%/.85) }
+.d3-pelat.p-kitab  { --d3-c1:hsl(var(--h) 58% 54%); --d3-c2:hsl(var(--h) 64% 32%); --d3-c3:hsla(var(--h) 58% 28%/.85) }
+.d3-pelat.p-bm     { --d3-c1:hsl(38 72% 60%);       --d3-c2:hsl(28 68% 38%);       --d3-c3:hsla(32 65% 30%/.85) }
+.d3-pelat.p-dok    { --d3-c1:hsl(285 55% 64%);      --d3-c2:hsl(268 52% 40%);      --d3-c3:hsla(275 50% 30%/.85) }
+.d3-pelat.p-tanda  { --d3-c1:hsl(45 80% 62%);       --d3-c2:hsl(35 72% 40%);       --d3-c3:hsla(38 68% 30%/.85) }
+
+/* ============================================================
+   3. NAVIGASI BAWAH — tombol aktif naik ke depan
+   ============================================================ */
+#nav{perspective:700px}
+.nv{
+  transform-style:preserve-3d;
+  transition:transform .4s var(--d3-e);
+  position:relative;
+}
+.nv .ic{display:grid;place-items:center;height:19px}
+.nv .ic svg{width:20px;height:20px;display:block;overflow:visible}
+.nv.on{transform:translateZ(24px) translateY(-3px)}
+.nv.on .ic svg{animation:d3-putar-ikon .62s var(--d3-e) both}
+@keyframes d3-putar-ikon{
+  0%  {transform:rotateY(-90deg) scale(.7)}
+  60% {transform:rotateY(12deg)  scale(1.14)}
+  100%{transform:rotateY(0)      scale(1)}
+}
+.nv::before{                                      /* alas cahaya di bawah tombol aktif */
+  content:"";position:absolute;left:50%;bottom:1px;translate:-50% 0;
+  width:30px;height:5px;border-radius:50%;
+  background:radial-gradient(ellipse,hsla(var(--h) 72% 55%/.75),transparent 70%);
+  opacity:0;transform:scale(.4);
+  transition:opacity .35s var(--d3-e), transform .35s var(--d3-e);
+}
+.nv.on::before{opacity:1;transform:scale(1)}
+
+/* ============================================================
+   4. HERO — miring lembut + rusuk cahaya
+   ============================================================ */
+.hero{
+  transform:
+    perspective(1100px)
+    rotateX(var(--d3-rx,0deg))
+    rotateY(var(--d3-ry,0deg));
+  transition:transform .5s var(--d3-e);
+}
+.hero::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:radial-gradient(320px circle at var(--d3-mx,50%) var(--d3-my,50%),
+             rgba(255,255,255,.16),transparent 60%);
+  opacity:0;transition:opacity .4s;
+}
+.hero.d3-hot::after{opacity:1}
+
+/* rangka kubus melayang — dipasang di dalam .hero (yang overflow-nya
+   tersembunyi, jadi tidak pernah bocor ke luar kartu) */
+.d3-bentuk{position:absolute;perspective:420px;pointer-events:none;z-index:0}
+.d3-kubus{position:relative;width:100%;height:100%;transform-style:preserve-3d;
+  animation:d3-guling 22s linear infinite}
+.d3-kubus i{position:absolute;inset:0;
+  border:1px solid hsla(var(--h) 75% 66% / .72);
+  background:hsla(var(--h) 70% 55% / .09)}
+.d3-kubus i:nth-child(1){transform:translateZ(var(--d3-r))}
+.d3-kubus i:nth-child(2){transform:rotateY(90deg) translateZ(var(--d3-r))}
+.d3-kubus i:nth-child(3){transform:rotateX(90deg) translateZ(var(--d3-r))}
+@keyframes d3-guling{to{transform:rotateX(360deg) rotateY(360deg)}}
+body.terang .d3-kubus i{border-color:hsla(var(--h) 55% 38% / .32)}
+/* isi hero harus di atas kubus */
+.hero .hi,.hero .big,.hero .sm{position:relative;z-index:1}
+
+/* ============================================================
+   5. TOMBOL & CHIP — tekan terasa masuk ke dalam
+   ============================================================ */
+.tombol,.q-cari,.chip,.kt-lagi,.muat-lagi,.stp{
+  transition:transform .18s var(--d3-e), box-shadow .28s var(--d3-e);
+}
+.tombol{position:relative;overflow:hidden;
+  box-shadow:0 10px 20px -12px var(--d3-sh), inset 0 1px 0 rgba(255,255,255,.28)}
+.tombol::after{
+  content:"";position:absolute;top:0;left:-140%;width:52%;height:100%;
+  background:linear-gradient(100deg,transparent,rgba(255,255,255,.42),transparent);
+  transform:skewX(-18deg);animation:d3-kilat 5.2s ease-in-out infinite;pointer-events:none;
+}
+@keyframes d3-kilat{0%,58%{left:-140%}86%,100%{left:150%}}
+.tombol:active,.q-cari:active,.kt-lagi:active,.muat-lagi:active{
+  transform:perspective(600px) translateZ(-8px) scale(.975)}
+.chip:active{transform:perspective(500px) translateZ(-6px) scale(.96)}
+.chip.on{box-shadow:0 8px 16px -10px var(--d3-sh)}
+.stp:active{transform:perspective(400px) translateZ(-6px) scale(.9)}
+
+/* ============================================================
+   6. MASUKNYA LAYAR — kartu terbang naik berurutan
+   Hanya untuk layar SELAIN baca.
+   ============================================================ */
+.layar.on:not([data-layar="baca"]) > *{
+  animation:d3-naik .52s var(--d3-e) both;
+}
+@keyframes d3-naik{
+  from{opacity:0;transform:perspective(800px) translateY(16px) translateZ(-40px) rotateX(6deg)}
+  to  {opacity:1;transform:none}
+}
+.layar.on:not([data-layar="baca"]) > *:nth-child(1){animation-delay:.00s}
+.layar.on:not([data-layar="baca"]) > *:nth-child(2){animation-delay:.04s}
+.layar.on:not([data-layar="baca"]) > *:nth-child(3){animation-delay:.08s}
+.layar.on:not([data-layar="baca"]) > *:nth-child(4){animation-delay:.12s}
+.layar.on:not([data-layar="baca"]) > *:nth-child(5){animation-delay:.16s}
+.layar.on:not([data-layar="baca"]) > *:nth-child(6){animation-delay:.20s}
+.layar.on:not([data-layar="baca"]) > *:nth-child(n+7){animation-delay:.24s}
+
+/* baris yang baru muncul saat digulir */
+.d3-reveal{opacity:0;transform:perspective(800px) translateY(14px) translateZ(-30px)}
+.d3-reveal.d3-in{opacity:1;transform:none;
+  transition:opacity .45s var(--d3-e), transform .45s var(--d3-e)}
+
+/* ============================================================
+   7. ANGKA KPI — sedikit terangkat dari kartunya
+   ============================================================ */
+.kpi{transform-style:preserve-3d}
+.kpi .val{transform:translateZ(18px);
+  text-shadow:0 6px 14px var(--d3-sh)}
+.kpi .lab,.kpi .sub{transform:translateZ(6px)}
+
+/* ============================================================
+   8. SEGEL BERANDA — cincinnya berputar di ruang, bukan di bidang
+   ============================================================ */
+.tl-seal-wrap{perspective:700px}
+.tl-ring-o{animation:d3-cincin-luar 26s linear infinite !important}
+.tl-ring-i{animation:d3-cincin-dalam 19s linear infinite !important}
+@keyframes d3-cincin-luar{
+  from{transform:rotateX(64deg) rotateZ(0deg)}
+  to  {transform:rotateX(64deg) rotateZ(360deg)}
+}
+@keyframes d3-cincin-dalam{
+  from{transform:rotateY(66deg) rotateZ(360deg)}
+  to  {transform:rotateY(66deg) rotateZ(0deg)}
+}
+.tl-seal{transform:translateZ(28px)}
+
+/* ============================================================
+   9. TIRAI (panel bawah) — naik dari kejauhan
+   ============================================================ */
+#tirai.on .panel{animation:d3-tirai .34s var(--d3-e) both}
+@keyframes d3-tirai{
+  from{opacity:.3;transform:perspective(1000px) translateY(40px) rotateX(9deg)}
+  to  {opacity:1;transform:none}
+}
+
+/* ============================================================
+   10. REM DARURAT
+   - layar baca sedang terbuka  -> semua ambien diistirahatkan
+   - pengguna minta gerak dikurangi -> semuanya diam
+   ============================================================ */
+body:has([data-layar="baca"].on) .d3-bentuk{opacity:0;animation-play-state:paused}
+body:has([data-layar="baca"].on) .tombol::after{animation-play-state:paused}
+
+@media (prefers-reduced-motion:reduce){
+  .d3-kartu,.d3-pelat,.d3-pelat > svg,.hero,.nv,.nv .ic svg,
+  .layar.on:not([data-layar="baca"]) > *,.d3-reveal,
+  .tl-ring-o,.tl-ring-i,.d3-kubus,.tombol::after,#tirai.on .panel{
+    animation:none !important;
+    transform:none !important;
+    transition:none !important;
+    opacity:1 !important;
+  }
+  .d3-bentuk{display:none}
+}

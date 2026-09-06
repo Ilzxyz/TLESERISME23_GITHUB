@@ -17,9 +17,6 @@ const Setel = {
       const s = localStorage.getItem('tleser_setel');
       if (s) Object.assign(this.data, JSON.parse(s));
     } catch (e) { }
-    // nilai lama bisa di luar jangkauan tombol − / + ; tarik balik ke rentang sah
-    const b = Number(this.data.besar);
-    this.data.besar = (b >= 14 && b <= 30) ? b : 18;
     this.terap();
   },
   simpan() {
@@ -139,7 +136,6 @@ async function masukAplikasi() {
   sembunyiGerbang();
   $('#pasang').classList.remove('on');
   $('#aplikasi').style.display = 'flex';
-  segarkanChipTerkunci();
   await isiBeranda();
   try { await pulihkanPosisi(); } catch (e) { }
 }
@@ -177,7 +173,6 @@ async function segarkanPustaka() {
   $('#pasang').classList.remove('on');
   sembunyiGerbang();
   $('#aplikasi').style.display = 'flex';
-  segarkanChipTerkunci();
   if (S.layar === 'atur') isiAtur();
   else if (S.layar === 'cari') { const w = $('#hasil'); if (w) w.innerHTML = petunjukCari(); }
   else if (S.layar === 'jelajah') gambarJelajah();
@@ -190,40 +185,7 @@ async function segarkanPustaka() {
 function hintAktifkan() {
   return `<div class="kosong" style="padding:30px 22px;line-height:1.95">
     Perpustakaan belum aktif.<br>
-    Aktifkan dulu lewat <b>⚙ Pengaturan → Sambungkan perpustakaan</b>.
-    <div style="margin-top:14px;font-size:12px;opacity:.85">
-      Catatan &amp; dokumenmu sendiri tetap bisa dipakai tanpa itu.</div></div>`;
-}
-
-/* ---------- pemindah saringan (dipakai juga saat perpustakaan belum aktif) ---------- */
-function pilihSaringCari(jenis) {
-  S.jenisCari = jenis;
-  $$('#saring-jenis .chip').forEach(c => c.classList.toggle('on', c.dataset.j === jenis));
-}
-function pilihDaftarJelajah(jenis) {
-  KAT.jenis = jenis;
-  $$('#pilih-daftar .chip').forEach(c => c.classList.toggle('on', c.dataset.daftar === jenis));
-  const qf = $('#q-fan');
-  if (qf) qf.placeholder = jenis === 'fan' ? 'Ketik nama fan…' : 'Ketik nama kitab…';
-}
-
-/* Saringan yang memang membutuhkan tleserisme.db diredupkan selama
-   perpustakaan belum tersambung — supaya ketukannya tidak berakhir
-   di layar kosong tanpa penjelasan. */
-function segarkanChipTerkunci() {
-  const aktif = pustakaAktif();
-  const kunci = (el, perluDB) => {
-    if (!el) return;
-    const mati = perluDB && !aktif;
-    el.disabled = mati;
-    el.style.opacity = mati ? '.4' : '';
-    el.style.cursor = mati ? 'default' : '';
-    el.title = mati ? 'Perlu perpustakaan aktif' : '';
-  };
-  $$('#saring-jenis .chip').forEach(c => kunci(c, c.dataset.j !== 'catatan'));
-  $$('#pilih-daftar .chip').forEach(c => kunci(c, c.dataset.daftar !== 'milik'));
-  kunci($('#tg-frasa'), true);
-  kunci($('#tg-kitab'), true);
+    Aktifkan dulu lewat <b>⚙ Pengaturan → Sambungkan perpustakaan</b>.</div>`;
 }
 
 /* ============================================================
@@ -531,11 +493,6 @@ async function pulihkanPosisi() {
     S.kitabCari = null;
     S.namaKitabCari = '';
     if (typeof KAT !== 'undefined' && p.daftar) KAT.jenis = p.daftar;
-
-    /* Tempat terakhir di layar baca cuma bisa dibuka kalau perpustakaannya ada.
-       Tanpa itu, memaksanya berarti melempar galat sebelum aplikasi sempat
-       tampil — lebih baik mulai dari Beranda. */
-    if (p.layar === 'baca' && !pustakaAktif()) return false;
 
     if (p.layar === 'baca' && p.kitab) {
       await bukaKitab(p.kitab, p.urut || 1);
@@ -1000,23 +957,18 @@ function pergi(nama) {
   $('#bilah-t').textContent = j[0];
   $('#bilah-s').textContent = j[1] || '—';
   $('#isi').scrollTop = 0;
+  if ((nama === 'cari' || nama === 'jelajah') && !pustakaAktif()) {
+    const w = nama === 'cari' ? $('#hasil') : $('#daftar-kitab');
+    if (w) w.innerHTML = hintAktifkan();
+    simpanPosisi();
+    return;
+  }
   if (nama === 'cari') {
-    /* Catatan & dokumen sendiri disimpan TERPISAH dari tleserisme.db, jadi
-       layar Cari tetap hidup walau perpustakaan belum tersambung — saringannya
-       tinggal digeser ke "Punya saya" supaya jelas apa yang sedang dicari. */
-    segarkanChipTerkunci();
-    if (!pustakaAktif()) pilihSaringCari('catatan');
-    else if (window.DB && DB.prapanas) DB.prapanas();
-    const w = $('#hasil');
-    if (w && !w.innerHTML.trim()) w.innerHTML = petunjukCari();
+    // panaskan mesin cari diam-diam sambil orangnya belum selesai mengetik
+    if (window.DB && DB.prapanas) DB.prapanas();
     setTimeout(() => $('#q').focus(), 80);
   }
-  if (nama === 'jelajah') {
-    segarkanChipTerkunci();
-    // tanpa perpustakaan, rak yang masih ada isinya cuma "Kitab punyaku"
-    if (!pustakaAktif() && KAT.jenis !== 'milik') pilihDaftarJelajah('milik');
-    gambarJelajah();
-  }
+  if (nama === 'jelajah') gambarJelajah();
   if (nama === 'koleksi') isiKoleksi();
   if (nama === 'atur') isiAtur();
   if (nama === 'beranda') isiBeranda();
@@ -1027,7 +979,14 @@ function pergi(nama) {
    BERANDA
    ============================================================ */
 async function isiBeranda() {
-  if (!pustakaAktif()) return berandaMilikSendiri();
+  if (!pustakaAktif()) {
+    // Perpustakaan belum aktif: Beranda tetap bersih (tanpa kartu ajakan).
+    // Aktivasi ada diam-diam di Pengaturan.
+    const k = $('#kpi'); if (k) k.innerHTML = '';
+    const kf = $('#ket-fan'); if (kf) kf.textContent = '—';
+    const rw = $('#riwayat'); if (rw) rw.innerHTML = '';
+    return;
+  }
   try {
     const i = await DB.info();
     $('#kpi').innerHTML = `
@@ -1056,50 +1015,6 @@ async function isiBeranda() {
         </button>`).join('');
     }
   } catch (e) { console.error(e); }
-}
-
-/* Beranda saat perpustakaan belum tersambung.
-   Sebelumnya layar ini dikosongkan — dan kosong itu terbaca sebagai "aplikasinya
-   rusak", padahal dokumen & catatan sendiri tetap utuh. Jadi angkanya diambil
-   dari milik sendiri, dan yang terakhir disentuh ditampilkan apa adanya. */
-async function berandaMilikSendiri() {
-  let dok = [], cat = [];
-  try { dok = window.DOK ? await DOK.semua() : []; } catch (e) { }
-  try { cat = await DB.catatanSemua(); } catch (e) { }
-
-  const k = $('#kpi');
-  if (k) k.innerHTML = `
-    <div class="kpi acc"><div class="lab">Dokumen saya</div>
-      <div class="val">${angka(dok.length)}</div>
-      <div class="sub">tersimpan di perangkat ini</div></div>
-    <div class="kpi"><div class="lab">Catatan saya</div>
-      <div class="val">${angka(cat.length)}</div>
-      <div class="sub">ikut tercari</div></div>`;
-
-  const kf = $('#ket-fan');
-  if (kf) kf.textContent = 'Rak "Kitab punyaku" · ' + angka(dok.length) + ' berkas';
-
-  const rw = $('#riwayat');
-  if (!rw) return;
-  if (!dok.length && !cat.length) {
-    rw.innerHTML = `<div class="kosong" style="padding:24px">Belum ada apa-apa di sini.<br>
-      Mulai dari <b>Koleksi</b> — masukkan dokumen atau tulis catatan pertamamu.</div>`;
-    return;
-  }
-  rw.innerHTML = dok.slice(0, 4).map(x => `
-      <button class="baris" data-dok="${x.id}">
-        <span class="lencana l-dok">${IKON_DOK[x.jenis] || 'DOC'}</span>
-        <span class="n"><span class="t ${arab(x.judul) ? 'ar' : ''}">${esc(x.judul)}</span>
-          <span class="m">punyaku &middot; ${rapiHuruf(x.huruf)}</span></span>
-        <span style="color:var(--ink3)">›</span>
-      </button>`).join('') +
-    cat.slice(0, 3).map(c => `
-      <button class="baris" data-catatan="${c.id}">
-        <span class="lencana l-catatan">✎</span>
-        <span class="n"><span class="t">${esc(c.judul || '(tanpa judul)')}</span>
-          <span class="m">${esc((c.isi || '').slice(0, 70))}…</span></span>
-        <span style="color:var(--ink3)">›</span>
-      </button>`).join('');
 }
 
 /* ============================================================
@@ -1171,10 +1086,12 @@ let sedangCari = false;
 let cariKotor = false;      // ada permintaan baru selagi yang lama masih jalan
 let sambungCari = null;     // keadaan untuk "tampilkan lebih banyak" (paginasi)
 async function jalankanCari() {
-  /* Perpustakaan belum tersambung bukan alasan untuk mematikan layar Cari.
-     Yang benar-benar butuh tleserisme.db cuma isi & judul kitab; catatan dan
-     dokumen sendiri ada di penyimpanan peramban, jadi tetap bisa dicari. */
-  if (!pustakaAktif() && S.jenisCari !== 'catatan') pilihSaringCari('catatan');
+  /* Personal notes (catatan) bisa dicari tanpa DB aktif.
+     Jenis cari lain butuh perpustakaan yang tersambung. */
+  if (!pustakaAktif() && S.jenisCari !== 'catatan') {
+    const w = $('#hasil'); if (w) w.innerHTML = hintAktifkan();
+    return;
+  }
   if (sedangCari) { cariKotor = true; return; }
   sedangCari = true;
   cariKotor = false;
@@ -1199,8 +1116,6 @@ async function jalankanCariSekali() {
   w.innerHTML = `<div class="muat"><div class="puter"></div>mencari…</div>`;
 
   try {
-    // tanpa perpustakaan: yang tersisa untuk dicari adalah milik sendiri
-    if (!pustakaAktif()) return tampilPunyaSaya(q, true);
     if (S.jenisCari === 'judul') return tampilJudul(await DB.cariJudul(q), q);
     if (S.jenisCari === 'catatan') return tampilPunyaSaya(q);
 
@@ -1493,29 +1408,19 @@ async function bukaPemilihKitab() {
 /* ============================================================
    DOKUMEN MILIK SENDIRI
    ============================================================ */
-async function tampilPunyaSaya(q, tanpaPustaka) {
+async function tampilPunyaSaya(q) {
   const w = $('#hasil');
   const kata = DB.kataKunci(q);
-  /* Kalau perpustakaan memang belum tersambung, katakan sekali di atas hasil —
-     supaya orang tahu ini pencarian di miliknya sendiri, bukan pencarian yang
-     gagal. */
-  const nota = tanpaPustaka
-    ? `<div class="kosong" style="padding:12px 14px;text-align:left;font-size:12px;
-         line-height:1.75;border:1px dashed var(--line2);border-radius:12px;
-         margin-bottom:11px">Perpustakaan belum aktif — ini hasil dari
-         <b>catatan &amp; dokumenmu sendiri</b>.
-         Aktifkan lewat <b>⚙ Pengaturan</b> untuk ikut mencari isi kitab.</div>`
-    : '';
   let h = '';
   try {
     const dok = window.DOK ? await DOK.cari(q, 30) : [];
     const cat = await DB.catatanCari(q);
     if (!dok.length && !cat.length) {
-      w.innerHTML = nota + `<div class="kosong">Tidak ada catatan atau dokumenmu
+      w.innerHTML = `<div class="kosong">Tidak ada catatan atau dokumenmu
         yang memuat kata itu.</div>`;
       return;
     }
-    h = nota + `<div class="hitung">Ketemu <b>${dok.length}</b> dokumen
+    h = `<div class="hitung">Ketemu <b>${dok.length}</b> dokumen
          dan <b>${cat.length}</b> catatan</div>`;
     h += dok.map(r => kartuDokumen(r, kata)).join('');
     h += cat.map(c => `
@@ -1985,15 +1890,6 @@ async function bukaGrupKitab(kunci) {
 
 /** dipanggil setiap kali layar Jelajah dibuka atau chip diganti */
 async function gambarJelajah() {
-  /* Rak "Kitab punyaku" tidak berasal dari tleserisme.db, jadi tetap terbuka.
-     Rak yang lain memang butuh perpustakaan — di situ baru dipasang petunjuk,
-     dan chip-nya tetap bisa ditekan supaya orang bisa balik ke rak miliknya. */
-  if (!pustakaAktif() && KAT.jenis !== 'milik') {
-    $('#pohon').style.display = 'none';
-    $('#daftar-kitab').style.display = '';
-    $('#daftar-kitab').innerHTML = hintAktifkan();
-    return;
-  }
   const perFan = KAT.jenis === 'fan';
   $('#pohon').style.display = perFan ? '' : 'none';
   $('#daftar-kitab').style.display = perFan ? 'none' : '';
@@ -2248,8 +2144,6 @@ async function isiAtur() {
   $('#s-abaikan .sw').classList.toggle('on', Setel.data.abaikan);
   $('#s-hamzah .sw').classList.toggle('on', Setel.data.hamzah);
   $('#v-besar').textContent = Setel.data.besar + ' pt';
-  const contoh = $('#contoh-besar');
-  if (contoh) contoh.style.fontSize = Setel.data.besar + 'px';
 
   if (!pustakaAktif()) {
     const box = $('#info-db');
@@ -2485,24 +2379,20 @@ function pasangKendali() {
   $('#s-abaikan').onclick = () => { Setel.data.abaikan = !Setel.data.abaikan; Setel.simpan(); isiAtur(); };
   $('#s-hamzah').onclick = () => { Setel.data.hamzah = !Setel.data.hamzah; Setel.simpan(); isiAtur(); };
 
-  /* Ukuran huruf Arab: dulu satu baris yang harus diketuk untuk membesar dan
-     balik sendiri sesudah mentok — tidak kelihatan bisa ditekan, dan
-     perubahannya cuma terasa di layar baca, jadi wajar terasa mati. Sekarang
-     ada tombol − / + yang jelas, dengan contoh huruf yang ikut berubah
-     saat itu juga. Ketukan pada barisnya tetap membesarkan, seperti dulu. */
-  const ubahBesar = arah => {
-    let b = Number(Setel.data.besar) || 18;
-    b += arah * 2;
-    if (b > 30) b = 14;
-    if (b < 14) b = 30;
-    Setel.data.besar = b;
-    Setel.simpan();
-    isiAtur();
-  };
-  const naik = $('#besar-naik'), turun = $('#besar-turun'), barisBesar = $('#s-besar');
-  if (naik) naik.onclick = e => { e.stopPropagation(); ubahBesar(1); };
-  if (turun) turun.onclick = e => { e.stopPropagation(); ubahBesar(-1); };
-  if (barisBesar) barisBesar.onclick = () => ubahBesar(1);
+  const sbesar = $('#s-besar');
+  if (sbesar) {
+    const ubahBesar = () => {
+      Setel.data.besar += 2; if (Setel.data.besar > 26) Setel.data.besar = 15;
+      Setel.simpan(); isiAtur();
+    };
+    sbesar.onclick = ubahBesar;
+    sbesar.addEventListener('click', ubahBesar, { capture: false });
+    sbesar.style.cursor = 'pointer';
+    // Pastikan bisa diklik di mobile juga
+    sbesar.style.touchAction = 'auto';
+  } else {
+    console.warn('Element #s-besar tidak ditemukan di DOM');
+  }
 
   /* --- kotak ketik di Jelajah: menyaring daftar kitab, atau pohon fan --- */
   let jedaKetik = null;
