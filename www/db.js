@@ -309,22 +309,28 @@ const DB = (() => {
     mode = 'android';
     siap = true;
 
-    /* Berkas yang terpotong / rusak (unduhan putus di tengah lalu ditambal
-       salah) tetap lolos open() — tapi meledak di kueri PERTAMA dengan
-       "database disk image is malformed". Diperiksa di sini, sekali, dengan
-       kueri paling murah, supaya pesannya jelas dan bisa ditindaklanjuti —
-       bukan layar yang diam-diam kosong. */
+    /* Cek keutuhan RINGAN. Dulu kesalahan APA PUN di sini dianggap "rusak" dan
+       menolak DB — padahal kueri bisa gagal karena hal sepele di jembatan
+       Android, sehingga DB yang SEHAT ikut ditolak dan perpustakaan tak pernah
+       nyala. Sekarang: kalau kueri sukses -> jelas sehat. Kalau kueri GAGAL,
+       kita HANYA menyatakan rusak bila pesannya memang ciri berkas korup
+       (malformed / not a database / disk image). Selain itu: biarkan terbuka —
+       kueri asli pertama (DB.info) akan menunjukkan sendiri kalau memang rusak. */
     try {
       await s.query({
         database: NAMA_DB,
-        statement: 'SELECT count(*) FROM sqlite_master', values: []
+        statement: 'SELECT count(*) FROM sqlite_master'
       });
     } catch (e) {
-      siap = false; cap = null; mode = null;
       const pesan = String((e && (e.message || e.errorMessage)) || e);
-      const err = new Error('DB_RUSAK: ' + pesan);
-      err.rusak = true;
-      throw err;
+      if (/malformed|not a database|disk image|corrupt|file is encrypted/i.test(pesan)) {
+        siap = false; cap = null; mode = null;
+        const err = new Error('DB_RUSAK: ' + pesan);
+        err.rusak = true;
+        throw err;
+      }
+      // error lain -> jangan brick DB yang mungkin sehat
+      console.warn('cek keutuhan dilewati (bukan tanda korup):', pesan);
     }
   }
 
