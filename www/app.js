@@ -131,6 +131,23 @@ async function sambungOtomatis() {
   }
 }
 
+/* Pastikan perpustakaan benar-benar TERBUKA sebelum dipakai.
+   DB sudah TERPASANG di HP belum berarti sudah dibuka di sesi ini — kalau
+   penyambungan saat boot sempat balapan/gagal diam-diam, layar Cari bisa
+   terlanjur bilang "belum aktif" padahal berkasnya ada. Jadi pas mau mencari,
+   coba buka dulu di sini. Aman: kalau sudah terbuka, langsung balik. */
+async function pastikanTersambung() {
+  if (pustakaAktif()) return true;
+  if (DB.diAndroid()) {
+    try {
+      await DB.bukaAndroid();
+      await DB.siapkanTabelPengguna();
+    } catch (e) { /* memang belum terpasang */ }
+    return pustakaAktif();
+  }
+  return false;
+}
+
 /* kerangka aplikasi; jalan walau DB belum tersambung */
 async function masukAplikasi() {
   sembunyiGerbang();
@@ -959,8 +976,18 @@ function pergi(nama) {
   $('#isi').scrollTop = 0;
   if ((nama === 'cari' || nama === 'jelajah') && !pustakaAktif()) {
     const w = nama === 'cari' ? $('#hasil') : $('#daftar-kitab');
-    if (w) w.innerHTML = hintAktifkan();
+    if (w) w.innerHTML = `<div class="muat"><div class="puter"></div>menyiapkan perpustakaan…</div>`;
     simpanPosisi();
+    /* DB mungkin terpasang tapi belum kebuka -> coba buka, lalu gambar ulang. */
+    pastikanTersambung().then(ok => {
+      if (S.layar !== nama) return;
+      if (ok) {
+        if (nama === 'cari') { const h = $('#hasil'); if (h) h.innerHTML = petunjukCari(); }
+        else gambarJelajah();
+      } else if (w) {
+        w.innerHTML = hintAktifkan();
+      }
+    });
     return;
   }
   if (nama === 'cari') {
@@ -1086,6 +1113,11 @@ let sedangCari = false;
 let cariKotor = false;      // ada permintaan baru selagi yang lama masih jalan
 let sambungCari = null;     // keadaan untuk "tampilkan lebih banyak" (paginasi)
 async function jalankanCari() {
+  if (!pustakaAktif()) {
+    const w = $('#hasil');
+    if (w) w.innerHTML = `<div class="muat"><div class="puter"></div>menyiapkan perpustakaan…</div>`;
+    await pastikanTersambung();          // DB terpasang tapi mungkin belum kebuka
+  }
   if (!pustakaAktif()) {
     const w = $('#hasil'); if (w) w.innerHTML = hintAktifkan();
     return;
