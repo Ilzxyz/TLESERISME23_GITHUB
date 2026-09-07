@@ -45,185 +45,22 @@ const S = {
 /* ============================================================
    MULAI
    ============================================================ */
-/* ---------- kunci perpustakaan (kata sandi) ----------
-   Aplikasi bisa DIBUKA & DIPAKAI (tambah kitab / catatan sendiri) TANPA sandi.
-   Kata sandi hanya diminta saat MENYAMBUNGKAN isi perpustakaan (Bahtsul Masail)
-   dari Pengaturan. Sandi disimpan sebagai hash SHA-256, bukan teks polos. */
-const KUNCI_GERBANG = 'tleserisme23.terbuka';
-const SANDI_HASH = '7bd1981832eaf2f92459dabe3f0c1711dcc4b1e1ddf47733cfd48ea666921362';
-
-async function hashSandi(t) {
-  try {
-    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t));
-    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-  } catch (e) { return null; }
-}
-function sudahTerbuka() {
-  try { return localStorage.getItem(KUNCI_GERBANG) === '1'; } catch (e) { return false; }
-}
-function pustakaAktif() { return !!(window.DB && DB.siap); }
-
-/* ---------- layar kata sandi (dipanggil dari Pengaturan/ajakan) ---------- */
-function tampilGerbang() {
-  const g = $('#gerbang'); if (g) g.classList.add('on');
-  const p = $('#gerbang-pesan'); if (p) p.textContent = '';
-  const i = $('#gerbang-sandi'); if (i) { i.value = ''; setTimeout(() => { try { i.focus(); } catch (e) { } }, 150); }
-}
-function sembunyiGerbang() { const g = $('#gerbang'); if (g) g.classList.remove('on'); }
-
-async function bukaGerbang() {
-  const inp = $('#gerbang-sandi'), pesan = $('#gerbang-pesan');
-  const sandi = ((inp && inp.value) || '').trim().toLowerCase();
-  if (!sandi) { if (pesan) pesan.textContent = 'Kata sandinya belum diisi.'; return; }
-  const h = await hashSandi(sandi);
-  if (!h || h !== SANDI_HASH) {
-    if (pesan) pesan.textContent = 'Kata sandi salah. Coba lagi.';
-    if (inp) { inp.value = ''; inp.focus(); }
-    return;
-  }
-  const ingat = $('#gerbang-ingat');
-  if (ingat && ingat.checked) { try { localStorage.setItem(KUNCI_GERBANG, '1'); } catch (e) { } }
-  sembunyiGerbang();
-  await sambungPerpustakaan(false);
-}
-function pasangGerbang() {
-  const b = $('#gerbang-buka'); if (b) b.onclick = bukaGerbang;
-  const t = $('#gerbang-tutup'); if (t) t.onclick = sembunyiGerbang;
-  const i = $('#gerbang-sandi');
-  if (i) i.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); bukaGerbang(); } };
-}
-
-/* Kata sandi DIBUANG (permintaan pengguna). Menyambungkan perpustakaan
-   langsung saja — tanpa gerbang, tanpa sandi. */
-function mintaSandiSambung() {
-  if (pustakaAktif()) return;
-  sembunyiGerbang();
-  sambungPerpustakaan(false);
-}
-
-/* ---------- MULAI: selalu masuk aplikasi dulu (tanpa tembok) ---------- */
 async function mulai() {
   Setel.muat();
   pasangKendali();
-  pasangGerbang();
-  await masukAplikasi();
-  sambungOtomatis();
-}
 
-/* Sambungkan otomatis saat buka app:
-   - Android : kalau DB sudah TERPASANG di HP (didapat lewat unduhan ber-sandi),
-               langsung buka. Tidak perlu sandi lagi tiap buka. Kalau belum ada,
-               diam saja — pengguna mengaktifkannya lewat Pengaturan.
-   - Web/desktop : DB dibaca dari server (bisa terpapar publik), jadi TETAP
-                   butuh buka-kunci (sandi) dulu sebelum tersambung. */
-async function sambungOtomatis() {
   if (DB.diAndroid()) {
     try {
       await DB.bukaAndroid();
-      await DB.siapkanTabelPengguna();
-      await segarkanPustaka();
-      return;
+      await lanjutJalan();
     } catch (e) {
-      /* Belum terpasang di mesin SQLite. Tapi berkasnya mungkin SUDAH ada di
-         Android/data (mis. baru pasang ulang APK yang menghapus data aplikasi).
-         Kalau ketemu, PASANG SENDIRI — tidak usah menyuruh pengguna menekan
-         tombol lagi. Ini jalur yang sama dengan "Pasang sekarang". */
-      try {
-        const t = await telusuriBerkas();
-        if (t && t.sumber) {
-          tampilPasang();
-          laporPasang('Berkas perpustakaan ketemu — memasang otomatis…');
-          await salinDariFolder(t.sumber);
-          await pasangkanDanBuka();
-        }
-      } catch (e2) {
-        /* gagal pasang otomatis -> biarkan layar pasang tampil,
-           pengguna bisa tekan "Pasang sekarang" sendiri */
-        try { tampilPasang(); siapPasangAndroid(); } catch (e3) { }
-      }
-    }
-    return;
-  }
-  if (sudahTerbuka()) {
-    const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
-    if (alamat) {
-      try { await DB.bukaJauh(alamat, kunciTersimpan()); await segarkanPustaka(); } catch (e) { }
-    }
-  }
-}
-
-/* Pastikan perpustakaan benar-benar TERBUKA sebelum dipakai.
-   DB sudah TERPASANG di HP belum berarti sudah dibuka di sesi ini — kalau
-   penyambungan saat boot sempat balapan/gagal diam-diam, layar Cari bisa
-   terlanjur bilang "belum aktif" padahal berkasnya ada. Jadi pas mau mencari,
-   coba buka dulu di sini. Aman: kalau sudah terbuka, langsung balik. */
-async function pastikanTersambung() {
-  if (pustakaAktif()) return true;
-  if (DB.diAndroid()) {
-    try {
-      await DB.bukaAndroid();
-      await DB.siapkanTabelPengguna();
-    } catch (e) { /* memang belum terpasang */ }
-    return pustakaAktif();
-  }
-  return false;
-}
-
-/* kerangka aplikasi; jalan walau DB belum tersambung */
-async function masukAplikasi() {
-  sembunyiGerbang();
-  $('#pasang').classList.remove('on');
-  $('#aplikasi').style.display = 'flex';
-  await isiBeranda();
-  try { await pulihkanPosisi(); } catch (e) { }
-}
-
-/* sambungkan isi perpustakaan (DB). diam=true -> jangan munculkan layar unduh
-   kalau DB belum ada; cukup biarkan Beranda menampilkan ajakan. */
-async function sambungPerpustakaan(diam) {
-  if (DB.diAndroid()) {
-    try {
-      await DB.bukaAndroid();
-      await DB.siapkanTabelPengguna();
-      await segarkanPustaka();
-      return true;
-    } catch (e) {
-      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) {
-        if (!diam) { tampilPasang(); siapPasangAndroid(); }
-      } else if (!diam) {
-        tampilPasang('Gagal membuka basis data: ' + (e.message || e));
-      }
-      return false;
+      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) tampilPasang();
+      else tampilPasang('Gagal membuka basis data: ' + (e.message || e));
+      siapPasangAndroid();
     }
   } else {
-    const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
-    if (alamat) {
-      try { await DB.bukaJauh(alamat, kunciTersimpan()); await segarkanPustaka(); return true; }
-      catch (e) { if (!diam) { tampilPasang(); mulaiDariInternet(alamat); } return false; }
-    }
-    if (!diam) { tampilPasang(); mulaiChrome(); }
-    return false;
+    await mulaiChrome();
   }
-}
-
-/* setelah tersambung: segarkan layar yang sedang tampil (tanpa lompat-lompat) */
-async function segarkanPustaka() {
-  $('#pasang').classList.remove('on');
-  sembunyiGerbang();
-  $('#aplikasi').style.display = 'flex';
-  if (S.layar === 'atur') isiAtur();
-  else if (S.layar === 'cari') { const w = $('#hasil'); if (w) w.innerHTML = petunjukCari(); }
-  else if (S.layar === 'jelajah') gambarJelajah();
-  else if (S.layar === 'koleksi') isiKoleksi();
-  else await isiBeranda();
-}
-
-/* petunjuk halus untuk layar Cari/Jelajah saat perpustakaan belum aktif —
-   tanpa tombol mencolok; aktivasi ada di Pengaturan. */
-function hintAktifkan() {
-  return `<div class="kosong" style="padding:30px 22px;line-height:1.95">
-    Perpustakaan belum aktif.<br>
-    Aktifkan dulu lewat <b>⚙ Pengaturan → Sambungkan perpustakaan</b>.</div>`;
 }
 
 /* ============================================================
@@ -270,7 +107,6 @@ function layarChrome(isi, tombol) {
   $('#btn-cari-sendiri').style.display = 'none';
   $('#btn-periksa').style.display = 'none';
   $('#btn-ulang').style.display = 'none';
-  const u = $('#btn-unduh'); if (u) u.style.display = 'none';
   const c = $('#btn-contoh');
   c.style.display = 'block';
   c.onclick = pakaiContoh;
@@ -654,31 +490,17 @@ async function periksaLokasi() {
   }
 }
 
-/** pindahkan berkas dari folder ke DATA.
-   PENTING: MENYALIN 1,3 GB butuh ruang KOSONG 1,3 GB lagi di memori dalam —
-   di HP yang sesak, salinan gagal separuh -> berkas terpotong -> "disk image
-   is malformed". Jadi kita PINDAHKAN (rename), bukan salin: nol ruang tambahan,
-   instan. Hanya kalau pindah gagal (beda volume) baru menyalin. */
+/** salin dari folder (cepat, hitungan detik) */
 async function salinDariFolder(sumber) {
   const Filesystem = DB.FS();
   const asal = (sumber.sub ? sumber.sub + '/' : '') + NAMA_BERKAS;
+  laporPasang('Ketemu di <b>' + sumber.ket + '</b>.<br>' +
+    'Menyalin… bisa beberapa menit, <b>jangan ditutup</b>.');
   try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
-  try {
-    laporPasang('Ketemu di <b>' + sumber.ket + '</b>.<br>Memindahkan berkas… (instan)');
-    await Filesystem.rename({
-      from: asal, directory: sumber.dir,
-      to: NAMA_BERKAS, toDirectory: 'DATA'
-    });
-    return;
-  } catch (e) {
-    // beda volume -> terpaksa menyalin (butuh ruang kosong ±1,3 GB)
-    laporPasang('Menyalin… bisa beberapa menit, <b>jangan ditutup</b>.<br>' +
-      '<span style="font-size:11px;opacity:.8">Butuh ruang kosong ±1,3 GB di memori HP.</span>');
-    await Filesystem.copy({
-      from: asal, directory: sumber.dir,
-      to: NAMA_BERKAS, toDirectory: 'DATA'
-    });
-  }
+  await Filesystem.copy({
+    from: asal, directory: sumber.dir,
+    to: NAMA_BERKAS, toDirectory: 'DATA'
+  });
 }
 
 /** salin dari berkas yang dipilih sendiri lewat jendela pemilih HP
@@ -757,14 +579,6 @@ async function salinDariPilihan(berkas) {
 
 /** langkah terakhir: pindahkan ke tempat mesin basis data, lalu buka */
 async function pasangkanDanBuka() {
-  /* Buang DB rusak/terpotong dari percobaan sebelumnya dulu — biar tidak
-     "malformed" lagi dan sekalian membebaskan ruang memori HP. */
-  laporPasang('Membersihkan sisa lama…');
-  try { const s = DB.SQ();
-    try { await s.closeConnection({ database: 'tleserisme', readonly: false }); } catch (e) { }
-    try { await s.deleteDatabase({ database: 'tleserisme' }); } catch (e) { }
-  } catch (e) { }
-
   laporPasang('Memasang…');
   await DB.pasangDariBerkas(NAMA_BERKAS);
   laporPasang('Membuka perpustakaan…');
@@ -825,172 +639,6 @@ async function pakaiBerkasPilihan(berkas) {
 }
 
 /* ============================================================
-   UNDUH BASIS DATA LANGSUNG DARI INTERNET (Android)
-   ------------------------------------------------------------
-   Aplikasi mengunduh tleserisme.db SENDIRI ke penyimpanan miliknya,
-   sepotong-sepotong, lewat jembatan asli Android (CapacitorHttp) —
-   bukan lewat fetch peramban — sehingga:
-     • tidak butuh laptop atau file manager
-     • tidak terhalang kunci folder Android/data
-     • BISA DILANJUTKAN kalau sinyal putus: potongan yang sudah
-       tersimpan tidak diunduh ulang (mulai dari ukuran berkas
-       separuh-jadi yang masih ada di penyimpanan aplikasi)
-   ============================================================ */
-const NAMA_UNDUH = 'tleserisme-unduh.db';   // berkas separuh-jadi di folder DATA
-const POTONG_UNDUH = 4 * 1024 * 1024;       // 4 MB per tarikan
-let unduhBerhenti = false;
-
-function HTTP() {
-  const C = window.Capacitor;
-  const h = C && C.Plugins && C.Plugins.CapacitorHttp;
-  if (!h) throw new Error('Jembatan unduh (CapacitorHttp) tidak tersedia di aplikasi ini');
-  return h;
-}
-
-/** ambil satu header tanpa peduli besar/kecil hurufnya */
-function ambilHeader(h, nama) {
-  if (!h) return '';
-  nama = nama.toLowerCase();
-  for (const k in h) if (k.toLowerCase() === nama) return h[k];
-  return '';
-}
-
-/** berapa byte yang sudah pernah terunduh (untuk lanjut) */
-async function ukuranParsial() {
-  try {
-    const st = await DB.FS().stat({ path: NAMA_UNDUH, directory: 'DATA' });
-    return Number(st.size) || 0;
-  } catch (e) { return 0; }
-}
-
-/** tanya ukuran berkas penuh ke server (via minta 1 byte) */
-async function ukuranTotalServer(url) {
-  const r = await HTTP().request({
-    method: 'GET', url, headers: { Range: 'bytes=0-0' }, responseType: 'text',
-    connectTimeout: 30000, readTimeout: 30000
-  });
-  if (r.status === 401 || r.status === 403) throw new Error('akses ditolak (berkas terkunci?)');
-  if (r.status === 404) throw new Error('berkas tidak ada di alamat itu (404) — cek tag/rilis GitHub-nya');
-  const cr = ambilHeader(r.headers, 'content-range');
-  let total = Number((String(cr).split('/')[1] || '').trim()) || 0;
-  if (!total && r.status === 200) total = Number(ambilHeader(r.headers, 'content-length')) || 0;
-  if (!total) throw new Error('server tidak menyebut ukuran berkas (Range tak dilayani)');
-  return total;
-}
-
-/** atur tampilan tombol unduh */
-function siapkanTombolUnduh(sedangJalan, adaParsial) {
-  const b = $('#btn-unduh');
-  if (!b) return;
-  if (sedangJalan) {
-    b.textContent = '■ Jeda unduhan';
-    b.onclick = () => { unduhBerhenti = true; b.textContent = 'Menghentikan…'; };
-  } else {
-    b.textContent = adaParsial ? '⭳ Lanjutkan unduhan' : '⭳ Unduh perpustakaan (±1,3 GB)';
-    b.onclick = unduhDanPasang;
-  }
-}
-
-/** siapkan layar pasang Android: tampilkan tombol unduh kalau alamatnya ada */
-async function siapPasangAndroid() {
-  const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
-  const b = $('#btn-unduh');
-  if (!b) return;
-  if (!url) { b.style.display = 'none'; return; }
-  b.style.display = 'block';
-  let parsial = 0;
-  try { parsial = await ukuranParsial(); } catch (e) { }
-  siapkanTombolUnduh(false, parsial > 0);
-  if (parsial > 0) {
-    laporPasang('Ada unduhan yang belum kelar (' + rapiUkuran(parsial) +
-      '). Tekan <b>Lanjutkan unduhan</b> untuk nyambung dari situ.');
-  }
-}
-
-/** unduh berkas penuh, sepotong-sepotong, lalu pasang */
-async function unduhDanPasang() {
-  const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
-  if (!url) { laporPasang('Alamat unduh belum diatur.', 'var(--bahaya)'); return; }
-
-  unduhBerhenti = false;
-  const Filesystem = DB.FS();
-  siapkanTombolUnduh(true);
-  $('#btn-pasang').style.display = 'none';
-  $('#btn-cari-sendiri').style.display = 'none';
-
-  try {
-    laporPasang('Menyiapkan unduhan…');
-    const total = await ukuranTotalServer(url);
-    let sudah = await ukuranParsial();
-    if (sudah > total) {                       // berkas separuh rusak/beda → mulai ulang
-      try { await Filesystem.deleteFile({ path: NAMA_UNDUH, directory: 'DATA' }); } catch (e) { }
-      sudah = 0;
-    }
-
-    const t0 = Date.now(), sudah0 = sudah;
-    let akhirLapor = 0;
-
-    while (sudah < total) {
-      if (unduhBerhenti) {
-        laporPasang('Unduhan dijeda di ' + rapiUkuran(sudah) + ' / ' + rapiUkuran(total) +
-          '.<br>Tekan <b>Lanjutkan unduhan</b> kapan pun untuk nyambung.');
-        siapkanTombolUnduh(false, true);
-        return;
-      }
-
-      const end = Math.min(sudah + POTONG_UNDUH, total) - 1;
-      const r = await HTTP().request({
-        method: 'GET', url, headers: { Range: 'bytes=' + sudah + '-' + end },
-        responseType: 'blob', connectTimeout: 30000, readTimeout: 120000
-      });
-
-      // server HARUS jawab potongan (206). Kalau 200 = kirim seluruhnya → tolak,
-      // karena menelan 1,3 GB sekaligus bikin HP kehabisan ingatan.
-      if (r.status === 200 && (sudah > 0 || end < total - 1)) {
-        throw new Error('server tidak melayani potongan (Range) — host ini tak cocok untuk unduh bertahap');
-      }
-      if (r.status !== 206 && r.status !== 200) throw new Error('server menjawab ' + r.status);
-
-      const b64 = r.data;
-      if (!b64) throw new Error('potongan kosong dari server');
-      if (sudah === 0) await Filesystem.writeFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
-      else await Filesystem.appendFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
-      sudah = end + 1;
-
-      const skr = Date.now();
-      if (skr - akhirLapor > 500 || sudah >= total) {
-        akhirLapor = skr;
-        const persen = (sudah / total) * 100;
-        const detik = (skr - t0) / 1000;
-        const laju = detik > 1 ? (sudah - sudah0) / detik : 0;    // byte/detik
-        const sisa = laju > 0 ? Math.round((total - sudah) / laju / 60) : null;
-        laporPasang('Mengunduh <b>' + persen.toFixed(1) + '%</b> (' +
-          rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ')' +
-          (laju > 0 ? ' · ' + rapiUkuran(laju) + '/dtk' : '') +
-          (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
-          '<br><span style="font-size:11px;opacity:.8;line-height:1.9">Sinyal putus? Santai — ' +
-          'tekan lanjut, gak ngulang dari nol. Jangan tutup aplikasi selama mengunduh.</span>');
-        await new Promise(r => setTimeout(r, 0));
-      }
-    }
-
-    laporPasang('Unduhan selesai — memasang…');
-    try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
-    await Filesystem.rename({
-      from: NAMA_UNDUH, to: NAMA_BERKAS, directory: 'DATA', toDirectory: 'DATA'
-    });
-    await pasangkanDanBuka();
-  } catch (e) {
-    const m = (e && (e.message || e.errorMessage)) || String(e);
-    laporPasang('Unduhan terhenti: ' + m +
-      '<br><br>Tekan <b>Lanjutkan unduhan</b> untuk nyambung dari potongan terakhir.',
-      'var(--bahaya)');
-    let parsial = 0; try { parsial = await ukuranParsial(); } catch (e2) { }
-    siapkanTombolUnduh(false, parsial > 0);
-  }
-}
-
-/* ============================================================
    NAVIGASI
    ============================================================ */
 const JUDUL = {
@@ -1017,22 +665,6 @@ function pergi(nama) {
   $('#bilah-t').textContent = j[0];
   $('#bilah-s').textContent = j[1] || '—';
   $('#isi').scrollTop = 0;
-  if ((nama === 'cari' || nama === 'jelajah') && !pustakaAktif()) {
-    const w = nama === 'cari' ? $('#hasil') : $('#daftar-kitab');
-    if (w) w.innerHTML = `<div class="muat"><div class="puter"></div>menyiapkan perpustakaan…</div>`;
-    simpanPosisi();
-    /* DB mungkin terpasang tapi belum kebuka -> coba buka, lalu gambar ulang. */
-    pastikanTersambung().then(ok => {
-      if (S.layar !== nama) return;
-      if (ok) {
-        if (nama === 'cari') { const h = $('#hasil'); if (h) h.innerHTML = petunjukCari(); }
-        else gambarJelajah();
-      } else if (w) {
-        w.innerHTML = hintAktifkan();
-      }
-    });
-    return;
-  }
   if (nama === 'cari') {
     // panaskan mesin cari diam-diam sambil orangnya belum selesai mengetik
     if (window.DB && DB.prapanas) DB.prapanas();
@@ -1049,14 +681,6 @@ function pergi(nama) {
    BERANDA
    ============================================================ */
 async function isiBeranda() {
-  if (!pustakaAktif()) {
-    // Perpustakaan belum aktif: Beranda tetap bersih (tanpa kartu ajakan).
-    // Aktivasi ada diam-diam di Pengaturan.
-    const k = $('#kpi'); if (k) k.innerHTML = '';
-    const kf = $('#ket-fan'); if (kf) kf.textContent = '—';
-    const rw = $('#riwayat'); if (rw) rw.innerHTML = '';
-    return;
-  }
   try {
     const i = await DB.info();
     $('#kpi').innerHTML = `
@@ -1156,15 +780,6 @@ let sedangCari = false;
 let cariKotor = false;      // ada permintaan baru selagi yang lama masih jalan
 let sambungCari = null;     // keadaan untuk "tampilkan lebih banyak" (paginasi)
 async function jalankanCari() {
-  if (!pustakaAktif()) {
-    const w = $('#hasil');
-    if (w) w.innerHTML = `<div class="muat"><div class="puter"></div>menyiapkan perpustakaan…</div>`;
-    await pastikanTersambung();          // DB terpasang tapi mungkin belum kebuka
-  }
-  if (!pustakaAktif()) {
-    const w = $('#hasil'); if (w) w.innerHTML = hintAktifkan();
-    return;
-  }
   if (sedangCari) { cariKotor = true; return; }
   sedangCari = true;
   cariKotor = false;
@@ -2217,19 +1832,6 @@ async function isiAtur() {
   $('#s-abaikan .sw').classList.toggle('on', Setel.data.abaikan);
   $('#s-hamzah .sw').classList.toggle('on', Setel.data.hamzah);
   $('#v-besar').textContent = Setel.data.besar + ' pt';
-
-  if (!pustakaAktif()) {
-    const box = $('#info-db');
-    if (box) {
-      box.innerHTML = `<div class="set" id="s-sambung" style="cursor:pointer">
-        <div class="n"><div class="t">Perpustakaan Bahtsul Masail</div>
-          <div class="s">Belum tersambung — ketuk untuk menyambungkan</div></div>
-        <span class="nilai" style="color:var(--gold)">Sambungkan ›</span></div>`;
-      const s = $('#s-sambung'); if (s) s.onclick = mintaSandiSambung;
-    }
-    return;
-  }
-
   try {
     const i = await DB.info();
     $('#info-db').innerHTML = `
@@ -2323,6 +1925,113 @@ function tutupTirai() { $('#tirai').classList.remove('on'); }
 /* ============================================================
    KENDALI
    ============================================================ */
+
+/* ============================================================
+   UNDUH BASIS DATA LANGSUNG DARI INTERNET (Android) — TAMBAHAN
+   Murni tambahan: mengisi tleserisme.db lalu memanggil pasangkanDanBuka()
+   yang SUDAH ADA. TIDAK menyentuh pencarian sama sekali.
+   ============================================================ */
+const NAMA_UNDUH = 'tleserisme-unduh.db';
+const POTONG_UNDUH = 4 * 1024 * 1024;
+let unduhBerhenti = false;
+
+function HTTP() {
+  const C = window.Capacitor;
+  const h = C && C.Plugins && C.Plugins.CapacitorHttp;
+  if (!h) throw new Error('Jembatan unduh (CapacitorHttp) tidak tersedia di aplikasi ini');
+  return h;
+}
+function ambilHeader(h, nama) {
+  if (!h) return '';
+  nama = nama.toLowerCase();
+  for (const k in h) if (k.toLowerCase() === nama) return h[k];
+  return '';
+}
+async function ukuranParsial() {
+  try { const st = await DB.FS().stat({ path: NAMA_UNDUH, directory: 'DATA' }); return Number(st.size) || 0; }
+  catch (e) { return 0; }
+}
+async function ukuranTotalServer(url) {
+  const r = await HTTP().request({ method: 'GET', url, headers: { Range: 'bytes=0-0' },
+    responseType: 'text', connectTimeout: 30000, readTimeout: 30000 });
+  if (r.status === 401 || r.status === 403) throw new Error('akses ditolak (repo privat? jadikan Public)');
+  if (r.status === 404) throw new Error('berkas tidak ada (404) - cek rilis GitHub db-v1');
+  const cr = ambilHeader(r.headers, 'content-range');
+  let total = Number((String(cr).split('/')[1] || '').trim()) || 0;
+  if (!total && r.status === 200) total = Number(ambilHeader(r.headers, 'content-length')) || 0;
+  if (!total) throw new Error('server tidak menyebut ukuran berkas (Range tak dilayani)');
+  return total;
+}
+function siapkanTombolUnduh(sedangJalan, adaParsial) {
+  const b = $('#btn-unduh'); if (!b) return;
+  if (sedangJalan) {
+    b.textContent = 'jeda unduhan';
+    b.onclick = () => { unduhBerhenti = true; b.textContent = 'Menghentikan...'; };
+  } else {
+    b.textContent = adaParsial ? 'Lanjutkan unduhan' : 'Unduh perpustakaan (1,3 GB)';
+    b.onclick = unduhDanPasang;
+  }
+}
+async function siapPasangAndroid() {
+  const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
+  const b = $('#btn-unduh'); if (!b) return;
+  if (!url) { b.style.display = 'none'; return; }
+  b.style.display = 'block';
+  let parsial = 0; try { parsial = await ukuranParsial(); } catch (e) { }
+  siapkanTombolUnduh(false, parsial > 0);
+  if (parsial > 0) laporPasang('Ada unduhan yang belum kelar (' + rapiUkuran(parsial) + '). Tekan Lanjutkan unduhan.');
+}
+async function unduhDanPasang() {
+  const url = (window.KONFIG && window.KONFIG.ALAMAT_UNDUH) || '';
+  if (!url) { laporPasang('Alamat unduh belum diatur.', 'var(--bahaya)'); return; }
+  unduhBerhenti = false;
+  const Filesystem = DB.FS();
+  siapkanTombolUnduh(true);
+  $('#btn-pasang').style.display = 'none';
+  const bc = $('#btn-cari-sendiri'); if (bc) bc.style.display = 'none';
+  try {
+    laporPasang('Menyiapkan unduhan...');
+    const total = await ukuranTotalServer(url);
+    let sudah = await ukuranParsial();
+    if (sudah > total) { try { await Filesystem.deleteFile({ path: NAMA_UNDUH, directory: 'DATA' }); } catch (e) { } sudah = 0; }
+    const t0 = Date.now(), sudah0 = sudah; let akhirLapor = 0;
+    while (sudah < total) {
+      if (unduhBerhenti) {
+        laporPasang('Unduhan dijeda di ' + rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + '.<br>Tekan Lanjutkan unduhan kapan pun.');
+        siapkanTombolUnduh(false, true); return;
+      }
+      const end = Math.min(sudah + POTONG_UNDUH, total) - 1;
+      const r = await HTTP().request({ method: 'GET', url, headers: { Range: 'bytes=' + sudah + '-' + end },
+        responseType: 'blob', connectTimeout: 30000, readTimeout: 120000 });
+      if (r.status === 200 && (sudah > 0 || end < total - 1)) throw new Error('server tidak melayani potongan (Range) - host ini tak cocok untuk unduh bertahap');
+      if (r.status !== 206 && r.status !== 200) throw new Error('server menjawab ' + r.status);
+      const b64 = r.data; if (!b64) throw new Error('potongan kosong dari server');
+      if (sudah === 0) await Filesystem.writeFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
+      else await Filesystem.appendFile({ path: NAMA_UNDUH, directory: 'DATA', data: b64 });
+      sudah = end + 1;
+      const skr = Date.now();
+      if (skr - akhirLapor > 500 || sudah >= total) {
+        akhirLapor = skr;
+        const persen = (sudah / total) * 100, detik = (skr - t0) / 1000, laju = detik > 1 ? (sudah - sudah0) / detik : 0;
+        const sisa = laju > 0 ? Math.round((total - sudah) / laju / 60) : null;
+        laporPasang('Mengunduh <b>' + persen.toFixed(1) + '%</b> (' + rapiUkuran(sudah) + ' / ' + rapiUkuran(total) + ')' +
+          (laju > 0 ? ' - ' + rapiUkuran(laju) + '/dtk' : '') + (sisa !== null ? '<br>kira-kira ' + sisa + ' menit lagi' : '') +
+          '<br><span style="font-size:11px;opacity:.8;line-height:1.9">Sinyal putus? Tekan lanjut, gak ngulang dari nol. Jangan tutup aplikasi selama mengunduh.</span>');
+        await new Promise(rr => setTimeout(rr, 0));
+      }
+    }
+    laporPasang('Unduhan selesai - memasang...');
+    try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
+    await Filesystem.rename({ from: NAMA_UNDUH, to: NAMA_BERKAS, directory: 'DATA', toDirectory: 'DATA' });
+    await pasangkanDanBuka();
+  } catch (e) {
+    laporPasang('Unduhan terhenti: ' + ((e && (e.message || e.errorMessage)) || e) +
+      '<br><br>Tekan Lanjutkan unduhan untuk nyambung dari potongan terakhir.', 'var(--bahaya)');
+    let parsial = 0; try { parsial = await ukuranParsial(); } catch (e2) { }
+    siapkanTombolUnduh(false, parsial > 0);
+  }
+}
+
 function pasangKendali() {
   $('#btn-pasang').onclick = pilihDanPasang;
   $('#btn-ulang').onclick = () => location.reload();
