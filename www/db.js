@@ -515,15 +515,26 @@ const DB = (() => {
      tabel kata: w = kata seragam, n = jumlah halaman,
      p = daftar id halaman disimpan sebagai selisih varint          */
 
-  /** buka daftar id halaman dari blob varint */
+  /** buka daftar id halaman dari blob varint.
+     Sumbernya bisa macam-macam tergantung platform: Uint8Array / array angka /
+     base64 / dan (SEKARANG, dipaksa lewat hex() di SQL) HEX string. Hex dipilih
+     karena BLOB dikembalikan berbeda-beda di Android vs sql.js — hex selalu
+     berupa TEKS, jadi sama di mana pun. */
   function bukaDaftar(blob) {
     let a;
     if (blob instanceof Uint8Array) a = blob;
     else if (Array.isArray(blob)) a = Uint8Array.from(blob);
     else if (typeof blob === 'string') {
-      const bin = atob(blob);
-      a = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      if (blob.length % 2 === 0 && /^[0-9A-Fa-f]*$/.test(blob)) {
+        // HEX (dari hex() SQLite) — paling andal lintas platform
+        a = new Uint8Array(blob.length / 2);
+        for (let i = 0; i < a.length; i++) a[i] = parseInt(blob.substr(i * 2, 2), 16);
+      } else {
+        // base64 (jalur lama)
+        const bin = atob(blob);
+        a = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+      }
     } else if (blob && blob.buffer) a = new Uint8Array(blob.buffer);
     else return [];
     const out = [];
@@ -558,7 +569,7 @@ const DB = (() => {
   async function daftarKata(w) {
     const ada = ingatanKata.get(w);
     if (ada) { ingatanKata.delete(w); ingatanKata.set(w, ada); return ada; }
-    const r = await satu('SELECT n, p FROM kata WHERE w = ?', [w]);
+    const r = await satu('SELECT n, hex(p) AS p FROM kata WHERE w = ?', [w]);
     const hasil = r ? bukaDaftar(r.p) : [];
     ingatanKata.set(w, hasil);
     if (ingatanKata.size > MAKS_INGATAN) {
@@ -574,7 +585,7 @@ const DB = (() => {
      saja ke SQLite, secukupnya untuk hasil yang mau ditampilkan. */
   async function daftarKataAwal(w, jmlDiminta) {
     const byte = Math.max(64, (jmlDiminta + 4) * 5);   // satu id paling banyak 5 byte
-    const r = await satu('SELECT n, substr(p, 1, ?) AS p FROM kata WHERE w = ?',
+    const r = await satu('SELECT n, hex(substr(p, 1, ?)) AS p FROM kata WHERE w = ?',
       [byte, w]);
     if (!r) return { n: 0, id: [] };
     return { n: r.n, id: bukaDaftar(r.p) };

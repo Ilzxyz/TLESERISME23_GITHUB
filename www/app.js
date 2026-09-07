@@ -122,8 +122,29 @@ async function sambungOtomatis() {
       await DB.bukaAndroid();
       await DB.siapkanTabelPengguna();
       await segarkanPustaka();
-    } catch (e) { /* DB belum ada -> diam; aktifkan lewat Pengaturan */ }
-  } else if (sudahTerbuka()) {
+      return;
+    } catch (e) {
+      /* Belum terpasang di mesin SQLite. Tapi berkasnya mungkin SUDAH ada di
+         Android/data (mis. baru pasang ulang APK yang menghapus data aplikasi).
+         Kalau ketemu, PASANG SENDIRI — tidak usah menyuruh pengguna menekan
+         tombol lagi. Ini jalur yang sama dengan "Pasang sekarang". */
+      try {
+        const t = await telusuriBerkas();
+        if (t && t.sumber) {
+          tampilPasang();
+          laporPasang('Berkas perpustakaan ketemu — memasang otomatis…');
+          await salinDariFolder(t.sumber);
+          await pasangkanDanBuka();
+        }
+      } catch (e2) {
+        /* gagal pasang otomatis -> biarkan layar pasang tampil,
+           pengguna bisa tekan "Pasang sekarang" sendiri */
+        try { tampilPasang(); siapPasangAndroid(); } catch (e3) { }
+      }
+    }
+    return;
+  }
+  if (sudahTerbuka()) {
     const alamat = (window.KONFIG && window.KONFIG.ALAMAT_DB) || '';
     if (alamat) {
       try { await DB.bukaJauh(alamat, kunciTersimpan()); await segarkanPustaka(); } catch (e) { }
@@ -633,17 +654,31 @@ async function periksaLokasi() {
   }
 }
 
-/** salin dari folder (cepat, hitungan detik) */
+/** pindahkan berkas dari folder ke DATA.
+   PENTING: MENYALIN 1,3 GB butuh ruang KOSONG 1,3 GB lagi di memori dalam —
+   di HP yang sesak, salinan gagal separuh -> berkas terpotong -> "disk image
+   is malformed". Jadi kita PINDAHKAN (rename), bukan salin: nol ruang tambahan,
+   instan. Hanya kalau pindah gagal (beda volume) baru menyalin. */
 async function salinDariFolder(sumber) {
   const Filesystem = DB.FS();
   const asal = (sumber.sub ? sumber.sub + '/' : '') + NAMA_BERKAS;
-  laporPasang('Ketemu di <b>' + sumber.ket + '</b>.<br>' +
-    'Menyalin… bisa beberapa menit, <b>jangan ditutup</b>.');
   try { await Filesystem.deleteFile({ path: NAMA_BERKAS, directory: 'DATA' }); } catch (e) { }
-  await Filesystem.copy({
-    from: asal, directory: sumber.dir,
-    to: NAMA_BERKAS, toDirectory: 'DATA'
-  });
+  try {
+    laporPasang('Ketemu di <b>' + sumber.ket + '</b>.<br>Memindahkan berkas… (instan)');
+    await Filesystem.rename({
+      from: asal, directory: sumber.dir,
+      to: NAMA_BERKAS, toDirectory: 'DATA'
+    });
+    return;
+  } catch (e) {
+    // beda volume -> terpaksa menyalin (butuh ruang kosong ±1,3 GB)
+    laporPasang('Menyalin… bisa beberapa menit, <b>jangan ditutup</b>.<br>' +
+      '<span style="font-size:11px;opacity:.8">Butuh ruang kosong ±1,3 GB di memori HP.</span>');
+    await Filesystem.copy({
+      from: asal, directory: sumber.dir,
+      to: NAMA_BERKAS, toDirectory: 'DATA'
+    });
+  }
 }
 
 /** salin dari berkas yang dipilih sendiri lewat jendela pemilih HP
@@ -722,6 +757,14 @@ async function salinDariPilihan(berkas) {
 
 /** langkah terakhir: pindahkan ke tempat mesin basis data, lalu buka */
 async function pasangkanDanBuka() {
+  /* Buang DB rusak/terpotong dari percobaan sebelumnya dulu — biar tidak
+     "malformed" lagi dan sekalian membebaskan ruang memori HP. */
+  laporPasang('Membersihkan sisa lama…');
+  try { const s = DB.SQ();
+    try { await s.closeConnection({ database: 'tleserisme', readonly: false }); } catch (e) { }
+    try { await s.deleteDatabase({ database: 'tleserisme' }); } catch (e) { }
+  } catch (e) { }
+
   laporPasang('Memasang…');
   await DB.pasangDariBerkas(NAMA_BERKAS);
   laporPasang('Membuka perpustakaan…');
