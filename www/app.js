@@ -93,12 +93,12 @@ function pasangGerbang() {
   if (i) i.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); bukaGerbang(); } };
 }
 
-/* Dipanggil dari Pengaturan/ajakan. HP yang sudah pernah dibuka -> langsung
-   sambung; kalau belum -> minta kata sandi dulu. */
+/* Kata sandi DIBUANG (permintaan pengguna). Menyambungkan perpustakaan
+   langsung saja — tanpa gerbang, tanpa sandi. */
 function mintaSandiSambung() {
   if (pustakaAktif()) return;
-  if (sudahTerbuka()) { sambungPerpustakaan(false); return; }
-  tampilGerbang();
+  sembunyiGerbang();
+  sambungPerpustakaan(false);
 }
 
 /* ---------- MULAI: selalu masuk aplikasi dulu (tanpa tembok) ---------- */
@@ -2180,8 +2180,8 @@ async function isiAtur() {
     if (box) {
       box.innerHTML = `<div class="set" id="s-sambung" style="cursor:pointer">
         <div class="n"><div class="t">Perpustakaan Bahtsul Masail</div>
-          <div class="s">Belum tersambung — ketuk untuk menyambungkan (perlu kata sandi)</div></div>
-        <span class="nilai" style="color:var(--gold)">⚿ Sambungkan ›</span></div>`;
+          <div class="s">Belum tersambung — ketuk untuk menyambungkan</div></div>
+        <span class="nilai" style="color:var(--gold)">Sambungkan ›</span></div>`;
       const s = $('#s-sambung'); if (s) s.onclick = mintaSandiSambung;
     }
     return;
