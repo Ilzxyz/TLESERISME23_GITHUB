@@ -22,8 +22,60 @@
 
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="tampilan.css">
+<link rel="stylesheet" href="kulit.css">
 </head>
 <body>
+
+<!-- =============== BACKGROUND 3D (semua layar) =============== -->
+<div id="bg3d">
+  <div class="grid-ceil"></div><div class="grid-floor"></div>
+  <div class="horizon"></div>
+  <div class="aurora a1"></div><div class="aurora a2"></div>
+  <div class="pola"></div>
+  <canvas id="k-partikel"></canvas>
+</div>
+
+<!-- =============== OPENING (logo dirakit) =============== -->
+<div id="panggung">
+  <div class="pilar pL"></div><div class="pilar pR"></div>
+  <div id="emblem-wrap">
+    <div class="em-layer" id="emblem-glow"></div>
+    <div class="em-layer" id="emblem-metal"></div>
+    <div id="shards"></div>
+  </div>
+  <div id="g-judul"><h1>TLeserisme<span class="d">23</span></h1><p>Perpustakaan Fikih &amp; Bahtsul Masail</p></div>
+  <div id="g-ketuk"><div class="titik"></div><span>Ketuk untuk masuk</span></div>
+  <div id="g-kilat"></div>
+</div>
+<div id="kloader"><div class="ui-abstergo"><div class="abstergo-loader"><div></div><div></div><div></div></div><div class="ui-text">MEMBUKA<div class="ui-dot"></div><div class="ui-dot"></div><div class="ui-dot"></div></div></div></div>
+
+<!-- =============== GERBANG KATA SANDI (muncul paling awal) =============== -->
+<div id="gerbang">
+  <img src="ikon/logo.png" alt="">
+  <h1>TLeserisme23</h1>
+  <div class="sub">Perpustakaan Fikih &amp; Bahtsul Masail</div>
+
+  <div class="kotak amanah">
+    <h4>⚠️ Amanah — mohon dijaga</h4>
+    <p>Aplikasi ini beserta seluruh isinya untuk <b>pemakaian pribadimu sendiri</b>.
+       Mohon <b>jangan disebarkan</b> ke orang lain atau tetangga — cukup untuk dirimu
+       sendiri. <i>Jazākallāhu khairan.</i></p>
+  </div>
+
+  <div class="cari-kotak" style="margin-bottom:12px">
+    <span style="color:var(--gold)">⚿</span>
+    <input id="gerbang-sandi" type="password" placeholder="Masukkan kata sandi…"
+           autocomplete="off" autocapitalize="off" autocorrect="off"
+           spellcheck="false" enterkeyhint="go">
+  </div>
+
+  <label class="ingat"><input type="checkbox" id="gerbang-ingat" checked> Ingat di HP ini</label>
+
+  <button class="tombol" id="gerbang-buka">⚿ Sambungkan perpustakaan</button>
+  <div style="height:9px"></div>
+  <button class="tombol lembut" id="gerbang-tutup">Nanti saja</button>
+  <div class="pesan" id="gerbang-pesan"></div>
+</div>
 
 <!-- =============== LAYAR PEMASANGAN (muncul kalau data belum ada) =============== -->
 <div id="pasang">
@@ -49,7 +101,7 @@
       cuma lebih lama (10–25 menit).</p>
   </div>
 
-  <button class="tombol" id="btn-unduh" style="display:none">⭳ Unduh perpustakaan (±1,3 GB)</button>
+  <button class="tombol" id="btn-unduh" style="display:none">⭳ Unduh perpustakaan dari internet</button>
   <div style="height:9px"></div>
   <button class="tombol" id="btn-pasang">Pasang sekarang</button>
   <div style="height:9px"></div>
@@ -222,8 +274,15 @@
         </div>
         <div class="set" id="s-besar">
           <div class="n"><div class="t">Ukuran huruf Arab</div>
-            <div class="s">Ketuk untuk memperbesar, sampai maksimal lalu balik lagi</div></div>
-          <span class="nilai" id="v-besar">18 pt</span>
+            <div class="s">Dipakai di layar baca &middot; contohnya langsung di bawah</div></div>
+          <div class="stepper">
+            <button type="button" class="stp" id="besar-turun" aria-label="Perkecil">−</button>
+            <span class="nilai" id="v-besar">18 pt</span>
+            <button type="button" class="stp" id="besar-naik" aria-label="Perbesar">+</button>
+          </div>
+        </div>
+        <div class="set contoh-baris">
+          <div class="ar" id="contoh-besar">بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ</div>
         </div>
         <div class="set" id="s-tema">
           <div class="n"><div class="t">Mode terang</div>
@@ -259,11 +318,11 @@
   </div>
 
   <div id="nav">
-    <button class="nv on" data-pergi="beranda"><span class="ic">⌂</span><span class="lb">Beranda</span></button>
-    <button class="nv" data-pergi="cari"><span class="ic">⌕</span><span class="lb">Cari</span></button>
-    <button class="nv" data-pergi="jelajah"><span class="ic">▤</span><span class="lb">Jelajah</span></button>
-    <button class="nv" data-pergi="koleksi"><span class="ic">✎</span><span class="lb">Koleksi</span></button>
-    <button class="nv" data-pergi="atur"><span class="ic">⚙</span><span class="lb">Atur</span></button>
+    <button class="nv on" data-pergi="beranda"><span class="ic"><svg viewBox="0 0 24 24"><g class="atap"><path d="M3 11.5 12 4l9 7.5"/></g><path d="M5.5 10.5V20h13v-9.5"/><path d="M10 20v-5h4v5"/></svg></span><span class="lb">Beranda</span></button>
+    <button class="nv" data-pergi="cari"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-5.2-5.2"/></svg></span><span class="lb">Cari</span></button>
+    <button class="nv" data-pergi="jelajah"><span class="ic"><svg class="pesawat" viewBox="0 0 24 24"><path d="M1.946 9.315c-.522-.174-.527-.455.01-.634l19.087-6.362c.529-.176.832.12.684.638l-5.454 19.086c-.15.529-.455.547-.679.045L12 14l6-8-8 6-8.054-2.685z"/></svg></span><span class="lb">Jelajah</span></button>
+    <button class="nv" data-pergi="koleksi"><span class="ic"><svg viewBox="0 0 24 24"><path d="M14.5 4.5 19.5 9.5 9 20H4v-5z"/><path d="M12.5 6.5 17.5 11.5"/></svg></span><span class="lb">Koleksi</span></button>
+    <button class="nv" data-pergi="atur"><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></span><span class="lb">Atur</span></button>
   </div>
 </div>
 
@@ -284,5 +343,6 @@
 <script src="dokumen.js"></script>
 <script src="app.js"></script>
 <script src="tampilan.js"></script>
+<script src="kulit.js"></script>
 </body>
 </html>
