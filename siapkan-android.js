@@ -150,6 +150,23 @@ function izin() {
    MEMASANG DI ATAS versi lama tanpa uninstall — basis datanya tetap utuh,
    tidak perlu unduh ulang. Cukup untuk sebar mandiri (bukan Play Store).
    ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------
+   DB 1,17GB DISIMPAN TANPA MAMPAT DI DALAM APK
+   ------------------------------------------------------------------
+   Basis data ikut dibundel sebagai aset (www/assets/databases/tleserisme.db).
+   Kalau aset .db dibiarkan termampat, Android menolak menyalinnya saat buka
+   pertama: aset terkompresi dibatasi 1 GB (UNCOMPRESS_DATA_MAX) — file kita
+   lebih besar. Dengan noCompress "db", berkasnya disimpan apa adanya, jadi
+   copyFromAssets bisa menyalinnya langsung. ------------------------------- */
+function tanpaMampatDB() {
+  const p = 'android/app/build.gradle';
+  let s = fs.readFileSync(p, 'utf8');
+  if (s.includes('noCompress')) { console.log('  noCompress sudah ada'); return; }
+  s = s.replace(/(\nandroid\s*\{)/, '$1\n    aaptOptions { noCompress "db" }');
+  fs.writeFileSync(p, s);
+  console.log('  aaptOptions noCompress "db" dipasang');
+}
+
 function kunciTetap() {
   const src = path.join('keystore', 'debug.keystore');
   if (!fs.existsSync(src)) { console.log('  (keystore tetap tidak ada — dilewati)'); return; }
@@ -162,6 +179,7 @@ function kunciTetap() {
 (async () => {
   console.log('Menyiapkan Android…');
   kunciTetap();
+  tanpaMampatDB();
   await ikon();
   await splash();
   warna();

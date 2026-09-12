@@ -54,12 +54,36 @@ async function mulai() {
       await DB.bukaAndroid();
       await lanjutJalan();
     } catch (e) {
-      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) tampilPasang();
-      else tampilPasang('Gagal membuka basis data: ' + (e.message || e));
+      if (String(e.message || e).indexOf('BELUM_ADA_DB') >= 0) {
+        // DB ikut nempel di APK -> pasang otomatis sekali (tanpa langkah manual).
+        // Kalau ternyata tidak ikut dibundel (mis. varian APK-kecil), balik ke cara lama.
+        if (await cobaPasangDariAset()) return;
+        tampilPasang();
+      } else {
+        tampilPasang('Gagal membuka basis data: ' + (e.message || e));
+      }
       siapPasangAndroid();
     }
   } else {
     await mulaiChrome();
+  }
+}
+
+/** Pasang otomatis dari DB yang menempel di dalam APK.
+ *  Berjalan di balik layar pembuka; kalau belum selesai saat pengguna masuk,
+ *  mereka melihat pesan "Menyiapkan…" — tidak pernah buntu. */
+async function cobaPasangDariAset() {
+  try {
+    tampilPasang();
+    laporPasang('Menyiapkan perpustakaan… sekali saja, mohon tunggu sebentar (jangan tutup aplikasi).');
+    await DB.pasangDariAset();
+    laporPasang('Membuka perpustakaan…');
+    await DB.bukaAndroid();
+    await lanjutJalan();
+    return true;
+  } catch (e) {
+    if (window.JEJAK) JEJAK('pasang-aset gagal: ' + (e && (e.message || e)));
+    return false;   // biar boot lanjut ke cara manual/unduh
   }
 }
 

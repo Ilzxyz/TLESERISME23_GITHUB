@@ -1,0 +1,82 @@
+name: Bangun APK TLeserisme23
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bangun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Siapkan Java 21
+        uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '21' }
+
+      - name: Siapkan Node 20
+        uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: Lapangkan ruang disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /usr/local/.ghcup || true
+          df -h /
+
+      - name: Pasang paket
+        run: npm install --no-audit --no-fund
+
+      - name: Tempel basis data ke dalam APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p www/assets/databases
+          gh release download db-v1 -p 'tleserisme.db' -D www/assets/databases --clobber
+          ls -lh www/assets/databases/
+
+      - name: Buat folder Android
+        run: npx cap add android
+
+      - name: Pasang ikon, nama, dan izin
+        run: node siapkan-android.js
+
+      - name: Salin berkas web
+        run: npx cap sync android
+
+      - name: Bangun APK
+        run: |
+          chmod +x android/gradlew
+          cd android && ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Rapikan hasil
+        run: |
+          mkdir -p keluaran
+          cp android/app/build/outputs/apk/debug/app-debug.apk keluaran/TLeserisme23.apk
+          ls -lh keluaran/
+
+      - name: Unggah APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TLeserisme23-APK
+          path: keluaran/TLeserisme23.apk
+          retention-days: 90
+
+      - name: Terbitkan
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: TLeserisme23 v1.0.${{ github.run_number }}
+          body: |
+            Perpustakaan Digital Fikih & Bahtsul Masail.
+            Basis data (±1,17 GB) sudah menyatu di dalam APK — sekali unduh, langsung pakai.
+
+            **Cara pasang**
+            1. Unduh `TLeserisme23.apk` di bawah (ukuran ±1,2 GB)
+            2. Buka di HP, izinkan pemasangan dari sumber luar
+            3. Buka aplikasi — saat pertama kali, tunggu sebentar "Menyiapkan perpustakaan…"
+            4. Selesai. Semua kitab langsung bisa dicari (butuh ruang kosong ±2,5 GB)
+          files: keluaran/TLeserisme23.apk

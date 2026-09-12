@@ -310,6 +310,17 @@ const DB = (() => {
     throw galat || new Error('gagal memasang');
   }
 
+  /** DB ikut nempel di dalam APK (folder assets/databases).
+   *  copyFromAssets menyalinnya secara native (aman memori, tanpa lewat JS),
+   *  jadi sekali pasang otomatis, tanpa langkah manual pengguna. */
+  async function pasangDariAset() {
+    const s = SQ();
+    if (!s.copyFromAssets) throw new Error('copyFromAssets tidak tersedia');
+    await s.copyFromAssets({ overwrite: false });
+    const ada = await s.isDatabase({ database: NAMA_DB });
+    if (!ada || !ada.result) throw new Error('aset DB tidak ditemukan di APK');
+  }
+
   /* ---------- penanya ---------- */
 
   async function tanya(sql, param = []) {
@@ -1014,7 +1025,7 @@ const DB = (() => {
   return {
     seragam, kataKunci, bukaTeks, diAndroid, catatanIO,
     FS, SQ, MAP,
-    bukaPeramban, bukaAndroid, bukaLokal, bukaJauh, pasangDariBerkas, siapkanTabelPengguna,
+    bukaPeramban, bukaAndroid, bukaLokal, bukaJauh, pasangDariBerkas, pasangDariAset, siapkanTabelPengguna,
     get mode() { return mode; },
     get siap() { return siap; },
     tanya, jalankan, satu,
