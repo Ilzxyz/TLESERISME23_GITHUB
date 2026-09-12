@@ -32,7 +32,7 @@ body.terang #bg3d{background:radial-gradient(130% 100% at 50% -10%, #e9f3ee, #e0
   background:linear-gradient(90deg,transparent,var(--k-acc),transparent);opacity:.5;filter:blur(1px);
   box-shadow:0 0 40px 8px hsla(var(--h,150) 72% 46% / .35);animation:kHz 4s ease-in-out infinite}
 @keyframes kHz{0%,100%{opacity:.3}50%{opacity:.6}}
-#bg3d .aurora{position:absolute;border-radius:50%;filter:blur(90px);mix-blend-mode:screen;pointer-events:none}
+#bg3d .aurora{position:absolute;border-radius:50%;filter:blur(64px);mix-blend-mode:screen;pointer-events:none;will-change:transform,opacity;transform:translateZ(0)}
 #bg3d .a1{width:60vw;height:40vh;left:-8vw;top:6vh;background:radial-gradient(closest-side,hsla(var(--h,150) 72% 46% / .5),transparent);animation:kAu1 22s ease-in-out infinite}
 #bg3d .a2{width:56vw;height:38vh;right:-10vw;top:22vh;background:radial-gradient(closest-side,hsla(var(--h2,174) 62% 40% / .45),transparent);animation:kAu2 28s ease-in-out infinite}
 @keyframes kAu1{0%,100%{transform:translate(0,0) scale(1);opacity:.5}50%{transform:translate(6vw,-3vh) scale(1.15);opacity:.8}}
@@ -43,6 +43,14 @@ body.terang #bg3d{background:radial-gradient(130% 100% at 50% -10%, #e9f3ee, #e0
 body.terang #bg3d .pola{opacity:.06;filter:invert(1)}
 @keyframes kPola{to{background-position:220px 220px}}
 #bg3d canvas{position:absolute;inset:0}
+#bg3d .grid-floor,#bg3d .grid-ceil,#bg3d .pola{will-change:background-position}
+/* HP layar kecil: ringankan filter berat biar animasi ga patah2 */
+@media(max-width:640px){
+  #bg3d .aurora{filter:blur(46px)}
+  #bg3d .a2{display:none}                 /* satu aurora cukup di layar kecil */
+  #bg3d .pola{animation:none;opacity:.04}  /* pola diam + tipis, hemat repaint */
+  #bg3d .horizon{box-shadow:0 0 24px 4px hsla(var(--h,150) 72% 46% / .3)}
+}
 
 /* ============================================================
    OPENING / GERBANG BARU (logo dirakit)
