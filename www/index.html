@@ -35,15 +35,25 @@
   <canvas id="k-partikel"></canvas>
 </div>
 
-<!-- =============== OPENING (logo dirakit) =============== -->
-<div id="panggung">
-  <div class="pilar pL"></div><div class="pilar pR"></div>
-  <div id="emblem-wrap">
-    <div class="em-layer" id="emblem-glow"></div>
-    <div class="em-layer" id="emblem-metal"></div>
-    <div id="shards"></div>
+<!-- =============== OPENING (video sinematik logo 3D) =============== -->
+<div id="panggung" class="k-vid">
+  <div id="v-bingkai">
+    <video id="v-pembuka" playsinline webkit-playsinline muted autoplay preload="auto"
+           poster="media/pembuka.jpg">
+      <source src="media/pembuka.mp4" type="video/mp4">
+    </video>
   </div>
-  <div id="g-judul"><h1>TLeserisme<span class="d">23</span></h1><p>Perpustakaan Fikih &amp; Bahtsul Masail</p></div>
+  <!-- hero hidup: logo 3D ngambang + swivel + kilau (muncul saat video kelar) -->
+  <div id="v-hero" aria-hidden="true">
+    <div class="emb-scene">
+      <div class="emb-obj">
+        <img class="emb-img" src="media/emblem.png" alt="">
+        <span class="emb-glint"></span>
+      </div>
+    </div>
+    <div class="emb-nama"><h1>TLeserisme<span class="d">23</span></h1>
+      <p>Perpustakaan Fikih &amp; Bahtsul Masail</p></div>
+  </div>
   <div id="g-ketuk"><div class="titik"></div><span>Ketuk untuk masuk</span></div>
   <div id="g-kilat"></div>
 </div>

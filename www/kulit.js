@@ -52,43 +52,54 @@
     var rz;addEventListener('resize',function(){clearTimeout(rz);rz=setTimeout(ukur,180);});
   }
 
-  /* ---------- perakitan emblem ---------- */
-  var wrap=document.getElementById('emblem-wrap');
-  var cont=document.getElementById('shards');
-  if(wrap&&cont){
-    var COLS=4,ROWS=5;
-    for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
-      var s=document.createElement('div');s.className='shard';
-      var t=r*100/ROWS,b=(ROWS-1-r)*100/ROWS,l=c*100/COLS,ri=(COLS-1-c)*100/COLS;
-      s.style.clipPath='inset('+t+'% '+ri+'% '+b+'% '+l+'%)';
-      var dx=(Math.random()*2-1)*innerWidth*.6, dy=(Math.random()*2-1)*innerHeight*.6, rot=(Math.random()*2-1)*180;
-      s.style.transform='translate('+dx+'px,'+dy+'px) rotate('+rot+'deg) scale(.35)';
-      s.style.transitionDelay=(Math.random()*.8)+'s';
-      cont.appendChild(s);
-    }
-    requestAnimationFrame(function(){requestAnimationFrame(function(){
-      var sh=cont.querySelectorAll('.shard');
-      for(var i=0;i<sh.length;i++){sh[i].style.transform='translate(0,0) rotate(0) scale(1)';sh[i].style.opacity='1';}
-    });});
-    setTimeout(function(){wrap.classList.add('rakit');},2600);
-    setTimeout(function(){wrap.style.animation='kApung 7s ease-in-out infinite';},3200);
+  /* ---------- opening video: main sekali -> freeze frame terakhir ---------- */
+  var panggung=document.getElementById('panggung');
+  var vid=document.getElementById('v-pembuka');
+  var gk=document.getElementById('g-ketuk');
+  var loader=document.getElementById('kloader');
+
+  function tampilkanKetuk(){ if(gk)gk.classList.add('tampil'); }
+  /* akhir: video digantikan hero logo HIDUP (ngambang + swivel 3D + kilau) */
+  function keAkhir(){ if(!panggung||panggung.classList.contains('akhir'))return;
+    try{ if(vid)vid.pause(); }catch(e){}
+    panggung.classList.add('akhir'); tampilkanKetuk(); }
+
+  if(vid){
+    /* autoplay ter-mute (paling aman di WebView). Kalau ketolak, poster
+       (frame terakhir) tetap tampil -> user ketuk buat mainkan lalu masuk. */
+    vid.muted=true;
+    var pr=vid.play();
+    if(pr&&pr.catch)pr.catch(function(){ tampilkanKetuk(); });
+    /* video TIDAK loop -> saat kelar, serah-terima ke hero logo hidup */
+    vid.addEventListener('ended',keAkhir);
+    vid.addEventListener('error',keAkhir);
+    /* jaring pengaman: kalau 'ended' tak pernah datang, tetap ke hero <8s */
+    setTimeout(keAkhir,8000);
+  } else {
+    keAkhir();
   }
 
-  /* ---------- dismiss: ketuk emblem -> masuk app ---------- */
-  var panggung=document.getElementById('panggung');
-  var loader=document.getElementById('kloader');
+  /* ---------- ketuk: kalau autoplay keblok, tap pertama MAINKAN video dulu;
+       selebihnya tap = masuk app ---------- */
   var sudah=false;
   function masuk(){
     if(sudah||!panggung)return; sudah=true;
-    if(wrap)wrap.style.animation='none';
+    try{ if(vid)vid.pause(); }catch(e){}
     panggung.classList.add('keluar');
     if(loader)setTimeout(function(){loader.classList.add('on');},900);
     setTimeout(function(){panggung.classList.add('pergi');},1300);
     setTimeout(function(){if(loader)loader.classList.remove('on');if(panggung)panggung.style.display='none';document.body.classList.remove('k-opening');},2200);
   }
-  if(wrap)wrap.addEventListener('click',masuk);
-  var gk=document.getElementById('g-ketuk');
-  if(gk)gk.addEventListener('click',masuk);
+  function onKetuk(){
+    /* sebelum hero: kalau video belum mulai (autoplay diblokir) -> putar dulu */
+    if(vid && panggung && !panggung.classList.contains('akhir') &&
+       vid.paused && !vid.ended && vid.currentTime===0){
+      try{ vid.muted=true; var pr=vid.play(); if(pr&&pr.catch)pr.catch(function(){masuk();}); return; }
+      catch(e){ masuk(); return; }
+    }
+    masuk();
+  }
+  if(panggung)panggung.addEventListener('click',onKetuk);
 
   /* ---------- nav 00Kubi: garis muter + huruf per label ---------- */
   var navs=document.querySelectorAll('#nav .nv');
@@ -110,5 +121,3 @@
     cb.addEventListener('change',function(){ bt.click(); });
   }
 })();
-/* apung keyframe (dipakai via JS) */
-(function(){var st=document.createElement('style');st.textContent='@keyframes kApung{0%,100%{transform:translate(-50%,-50%) translateY(0)}50%{transform:translate(-50%,-50%) translateY(-12px)}}';document.head.appendChild(st);})();
