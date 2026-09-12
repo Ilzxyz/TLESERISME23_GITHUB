@@ -1,4 +1,4 @@
-name: Bangun APK TLeserisme23
+﻿name: Bangun APK TLeserisme23
 
 on:
   push:
@@ -22,8 +22,21 @@ jobs:
         uses: actions/setup-node@v4
         with: { node-version: '20' }
 
+      - name: Lapangkan ruang disk
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc /usr/local/.ghcup || true
+          df -h /
+
       - name: Pasang paket
         run: npm install --no-audit --no-fund
+
+      - name: Tempel basis data ke dalam APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p www/assets/databases
+          gh release download db-v1 -p 'tleserisme.db' -D www/assets/databases --clobber
+          ls -lh www/assets/databases/
 
       - name: Buat folder Android
         run: npx cap add android
@@ -59,10 +72,11 @@ jobs:
           name: TLeserisme23 v1.0.${{ github.run_number }}
           body: |
             Perpustakaan Digital Fikih & Bahtsul Masail.
+            Basis data (±1,17 GB) sudah menyatu di dalam APK — sekali unduh, langsung pakai.
 
             **Cara pasang**
-            1. Unduh `TLeserisme23.apk` di bawah
+            1. Unduh `TLeserisme23.apk` di bawah (ukuran ±1,2 GB)
             2. Buka di HP, izinkan pemasangan dari sumber luar
-            3. Salin `tleserisme.db` ke folder Download di HP
-            4. Buka aplikasi, tekan tombol pasang basis data
+            3. Buka aplikasi — saat pertama kali, tunggu sebentar "Menyiapkan perpustakaan..."
+            4. Selesai. Semua kitab langsung bisa dicari (butuh ruang kosong ±2,5 GB)
           files: keluaran/TLeserisme23.apk
